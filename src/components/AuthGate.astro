@@ -1,0 +1,30 @@
+---
+// Full-screen login gate. Shows Google sign-in and, in dev, a dev-login form.
+const devEnabled = import.meta.env.DEV && import.meta.env.DEV_LOGIN_ENABLED === "true";
+const allowed = import.meta.env.ALLOWED_EMAIL ?? "terrahq.com";
+const googleConfigured = Boolean(import.meta.env.GOOGLE_CLIENT_ID);
+---
+
+<div class="gate">
+  <div class="gate__card card">
+    <div class="gate__mark">📚</div>
+    <h1 class="gate__title">TerraShelf</h1>
+    <p class="gate__sub">The terrahq.com book club. Sign in with your <strong>@{allowed}</strong> account.</p>
+
+    {googleConfigured ? (
+      <a class="btn" href="/api/auth/google/start">Sign in with Google</a>
+    ) : (
+      <p class="muted">Google sign-in is not configured yet.</p>
+    )}
+
+    {devEnabled && (
+      <form class="gate__dev" method="POST" action="/api/auth/dev">
+        <p class="gate__or">— dev login (local only) —</p>
+        <div class="field" style="margin-bottom:0.75rem">
+          <input type="text" name="email" placeholder="you@terrahq.com" value="eli@terrahq.com" autocomplete="off" />
+        </div>
+        <button class="btn btn--muted" type="submit">Dev sign in</button>
+      </form>
+    )}
+  </div>
+</div>

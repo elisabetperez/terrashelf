@@ -1,0 +1,140 @@
+---
+import Layout from "@/components/Layout.astro";
+import { getSession, isAdmin } from "@/lib/session";
+
+const session = getSession(Astro.cookies);
+const admin = isAdmin(session?.email);
+---
+
+<Layout title="TerraShelf — Suggestions" session={session} isAdmin={admin} active="suggestions">
+  <h1 class="page-title">Suggestion box</h1>
+  <p class="page-sub">Propose a book for a future month. Mark the ones you're interested in.</p>
+
+  <div class="card" style="padding:1rem;margin-bottom:1.5rem">
+    <label for="q">Search a book to add</label>
+    <input type="search" id="q" placeholder="Title, author…" autocomplete="off" />
+    <div class="results" id="results"></div>
+  </div>
+
+  <div class="stack" id="suggestions"></div>
+</Layout>
+
+<script>
+  type BookRef = { id: string; olKey: string; title: string; author: string; coverUrl: string };
+  type Suggestion = BookRef & { suggestedBy: string; createdAt: string; interested: string[] };
+
+  const q = document.getElementById("q") as HTMLInputElement;
+  const results = document.getElementById("results")!;
+  const listEl = document.getElementById("suggestions")!;
+  let me = "";
+  let isAdmin = false;
+
+  const nameOnly = (email: string) => (email.includes("@") ? email.slice(0, email.indexOf("@")) : email);
+
+  // ---- Search (debounced) ----
+  let timer: ReturnType<typeof setTimeout>;
+  q.addEventListener("input", () => {
+    clearTimeout(timer);
+    const term = q.value.trim();
+    if (!term) { results.innerHTML = ""; return; }
+    timer = setTimeout(() => search(term), 300);
+  });
+
+  async function search(term: string) {
+    results.innerHTML = `<p class="muted">Searching…</p>`;
+    try {
+      const r = await fetch(`/api/openlibrary/search?q=${encodeURIComponent(term)}`);
+      const data = (await r.json()) as { books: BookRef[] };
+      results.innerHTML = "";
+      if (!data.books.length) { results.innerHTML = `<p class="muted">No results.</p>`; return; }
+      for (const b of data.books) {
+        const row = document.createElement("div");
+        row.className = "result";
+        row.innerHTML = `${b.coverUrl ? `<img src="${b.coverUrl}" alt="">` : `<span class="result__ph"></span>`}
+          <div class="result__body"><div class="result__title"></div><div class="result__author"></div></div>`;
+        row.querySelector(".result__title")!.textContent = b.title;
+        row.querySelector(".result__author")!.textContent = b.author;
+        const add = document.createElement("button");
+        add.className = "btn btn--sm";
+        add.textContent = "Add";
+        add.addEventListener("click", () => addSuggestion(b, add));
+        row.append(add);
+        results.append(row);
+      }
+    } catch {
+      results.innerHTML = `<p class="error">Search failed.</p>`;
+    }
+  }
+
+  async function addSuggestion(b: BookRef, btn: HTMLButtonElement) {
+    btn.disabled = true;
+    const r = await fetch("/api/suggestions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ olKey: b.olKey, title: b.title, author: b.author, coverUrl: b.coverUrl }),
+    });
+    const data = await r.json();
+    if (r.ok) {
+      applyData(data);
+      btn.textContent = "Added ✓";
+    } else {
+      btn.textContent = data.error ?? "Error";
+      setTimeout(() => { btn.disabled = false; btn.textContent = "Add"; }, 1500);
+    }
+  }
+
+  function applyData(data: { suggestions: Suggestion[]; me: string; isAdmin: boolean }) {
+    me = data.me; isAdmin = data.isAdmin;
+    render(data.suggestions);
+  }
+
+  function render(suggestions: Suggestion[]) {
+    listEl.innerHTML = "";
+    if (!suggestions.length) {
+      listEl.innerHTML = `<div class="empty card"><h2>No suggestions yet</h2><p>Be the first to add a book above.</p></div>`;
+      return;
+    }
+    for (const s of suggestions) {
+      const card = document.createElement("div");
+      card.className = "card book";
+      const mine = s.interested.includes(me);
+      card.innerHTML = `
+        ${s.coverUrl ? `<img class="book__cover" src="${s.coverUrl}" alt="">` : `<span class="book__cover">📖</span>`}
+        <div style="flex:1">
+          <div class="book__title"></div>
+          <div class="book__author"></div>
+          <div class="book__meta">suggested by <span class="js-by"></span></div>
+          <div class="row" style="margin-top:0.6rem">
+            <button class="pill js-interest ${mine ? "is-on" : ""}">★ Interested · <span class="js-icount">${s.interested.length}</span></button>
+            ${(s.suggestedBy === me || isAdmin) ? `<button class="btn btn--ghost btn--sm js-del">Remove</button>` : ""}
+          </div>
+        </div>`;
+      card.querySelector(".book__title")!.textContent = s.title;
+      card.querySelector(".book__author")!.textContent = s.author;
+      card.querySelector(".js-by")!.textContent = nameOnly(s.suggestedBy);
+      card.querySelector(".js-interest")!.addEventListener("click", () => toggleInterest(s.id));
+      card.querySelector(".js-del")?.addEventListener("click", () => removeSuggestion(s.id));
+      listEl.append(card);
+    }
+  }
+
+  async function toggleInterest(id: string) {
+    const r = await fetch("/api/suggestions/interest", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+    if (r.ok) applyData(await r.json());
+  }
+
+  async function removeSuggestion(id: string) {
+    const r = await fetch(`/api/suggestions?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+    if (r.ok) applyData(await r.json());
+  }
+
+  async function load() {
+    const r = await fetch("/api/suggestions");
+    if (r.ok) applyData(await r.json());
+  }
+  load();
+</script>

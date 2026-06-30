@@ -1,0 +1,182 @@
+---
+import Layout from "@/components/Layout.astro";
+import { getSession, isAdmin } from "@/lib/session";
+import { getMonth, currentMonthId, tally } from "@/lib/months";
+
+const session = getSession(Astro.cookies);
+const admin = isAdmin(session?.email);
+const monthId = currentMonthId(new Date());
+const month = session && admin ? await getMonth(monthId) : null;
+const counts = month ? tally(month) : {};
+const monthLabel = new Date(monthId + "-01T00:00:00Z").toLocaleDateString("en-US", { month: "long", year: "numeric", timeZone: "UTC" });
+---
+
+<Layout title="TerraShelf — Admin" session={session} isAdmin={admin} active="admin">
+  {!admin ? (
+    <div class="empty card"><h2>Admins only</h2><p>This area is restricted.</p></div>
+  ) : (
+    <>
+      <h1 class="page-title">Admin · {monthLabel}
+        {month && <span class={`badge badge--${month.phase}`}>{month.phase}</span>}
+      </h1>
+      <p class="page-sub">Set up candidates, open and close voting for <strong>{monthId}</strong>.</p>
+      <span id="page-month" data-month={monthId} hidden></span>
+      <p class="error" id="admin-error"></p>
+
+      {!month ? (
+        <div class="card" style="padding:1.25rem">
+          <p>No month created yet.</p>
+          <button class="btn" data-action="create">Create {monthLabel}</button>
+        </div>
+      ) : month.phase === "draft" ? (
+        <div class="stack">
+          <div class="card" style="padding:1.25rem">
+            <p class="section-label">Candidates ({month.candidates.length})</p>
+            {month.candidates.length === 0 && <p class="muted">No candidates yet. Add at least 2 to open voting.</p>}
+            <div class="stack" style="margin-top:0.6rem">
+              {month.candidates.map((c) => (
+                <div class="book card" style="align-items:center">
+                  {c.coverUrl ? <img class="book__cover" src={c.coverUrl} alt="" /> : <span class="book__cover">📖</span>}
+                  <div style="flex:1">
+                    <div class="book__title">{c.title}</div>
+                    <div class="book__author">{c.author}</div>
+                  </div>
+                  <button class="btn btn--ghost btn--sm" data-action="removeCandidate" data-book-id={c.id}>Remove</button>
+                </div>
+              ))}
+            </div>
+            <div style="margin-top:1rem">
+              <button class="btn" data-action="openVoting" disabled={month.candidates.length < 2}>Open voting</button>
+            </div>
+          </div>
+
+          <div class="card" style="padding:1.25rem">
+            <p class="section-label">Add a candidate — search</p>
+            <input type="search" id="cand-q" placeholder="Title, author…" autocomplete="off" />
+            <div class="results" id="cand-results"></div>
+          </div>
+
+          <div class="card" style="padding:1.25rem">
+            <p class="section-label">…or pick from the suggestion box</p>
+            <div class="results" id="sugg-results"><p class="muted">Loading…</p></div>
+          </div>
+        </div>
+      ) : month.phase === "voting" ? (
+        <div class="card" style="padding:1.25rem">
+          <p class="section-label">Current tally</p>
+          <div class="stack" style="margin:0.6rem 0 1rem">
+            {month.candidates.map((c) => (
+              <div class="row"><strong style="min-width:2rem">{counts[c.id] ?? 0}</strong> <span>{c.title}</span></div>
+            ))}
+          </div>
+          <div class="field">
+            <label for="winner">Winner (leave on “Auto” unless breaking a tie)</label>
+            <select id="winner" style="font:inherit;padding:0.5rem;border-radius:10px;border:1px solid var(--line)">
+              <option value="">Auto (most votes)</option>
+              {month.candidates.map((c) => <option value={c.id}>{c.title}</option>)}
+            </select>
+          </div>
+          <button class="btn" data-action="close">Close voting & crown the winner</button>
+        </div>
+      ) : (
+        <div class="card" style="padding:1.25rem">
+          <p>Voting is closed. The book of the month is set — see it on the <a href="/">home page</a>.</p>
+        </div>
+      )}
+    </>
+  )}
+</Layout>
+
+<script>
+  type BookRef = { id: string; olKey: string; title: string; author: string; coverUrl: string };
+
+  const monthEl = document.getElementById("page-month") as HTMLElement | null;
+  if (monthEl) {
+    const month = monthEl.dataset.month!;
+    const errEl = document.getElementById("admin-error")!;
+
+    async function action(payload: Record<string, unknown>) {
+      errEl.textContent = "";
+      const r = await fetch("/api/admin/month", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: month, ...payload }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (r.ok) {
+        location.reload();
+      } else {
+        errEl.textContent = data.error ?? "Action failed";
+      }
+    }
+
+    // Buttons with data-action (create, removeCandidate, openVoting, close)
+    document.querySelectorAll<HTMLButtonElement>("[data-action]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const a = btn.dataset.action!;
+        if (a === "removeCandidate") return action({ action: a, bookId: btn.dataset.bookId });
+        if (a === "close") {
+          const winner = (document.getElementById("winner") as HTMLSelectElement | null)?.value || undefined;
+          return action({ action: "close", winnerBookId: winner });
+        }
+        return action({ action: a });
+      });
+    });
+
+    function resultRow(b: BookRef): HTMLElement {
+      const row = document.createElement("div");
+      row.className = "result";
+      row.innerHTML = `${b.coverUrl ? `<img src="${b.coverUrl}" alt="">` : `<span class="result__ph"></span>`}
+        <div class="result__body"><div class="result__title"></div><div class="result__author"></div></div>`;
+      row.querySelector(".result__title")!.textContent = b.title;
+      row.querySelector(".result__author")!.textContent = b.author;
+      const add = document.createElement("button");
+      add.className = "btn btn--sm";
+      add.textContent = "Add candidate";
+      add.addEventListener("click", () => action({ action: "addCandidate", ref: b }));
+      row.append(add);
+      return row;
+    }
+
+    // Candidate search
+    const cq = document.getElementById("cand-q") as HTMLInputElement | null;
+    const cres = document.getElementById("cand-results");
+    if (cq && cres) {
+      let timer: ReturnType<typeof setTimeout>;
+      cq.addEventListener("input", () => {
+        clearTimeout(timer);
+        const term = cq.value.trim();
+        if (!term) { cres.innerHTML = ""; return; }
+        timer = setTimeout(async () => {
+          cres.innerHTML = `<p class="muted">Searching…</p>`;
+          const r = await fetch(`/api/openlibrary/search?q=${encodeURIComponent(term)}`);
+          const data = (await r.json()) as { books: BookRef[] };
+          cres.innerHTML = "";
+          data.books.forEach((b) => cres.append(resultRow(b)));
+        }, 300);
+      });
+    }
+
+    // Suggestions as candidates
+    const sres = document.getElementById("sugg-results");
+    if (sres) {
+      (async () => {
+        const r = await fetch("/api/suggestions");
+        const data = (await r.json()) as { suggestions: (BookRef & { interested: string[] })[] };
+        sres.innerHTML = "";
+        if (!data.suggestions.length) { sres.innerHTML = `<p class="muted">No suggestions yet.</p>`; return; }
+        data.suggestions
+          .sort((a, b) => b.interested.length - a.interested.length)
+          .forEach((s) => {
+            const row = resultRow(s);
+            const meta = document.createElement("span");
+            meta.className = "muted";
+            meta.style.fontSize = "0.8rem";
+            meta.textContent = `★ ${s.interested.length}`;
+            row.querySelector(".result__body")!.append(meta);
+            sres.append(row);
+          });
+      })();
+    }
+  }
+</script>

@@ -1,0 +1,264 @@
+---
+import Layout from "@/components/Layout.astro";
+import { getSession, isAdmin } from "@/lib/session";
+import { getMonth, currentMonthId, userVote, tally, winnerBook } from "@/lib/months";
+import { getMembers } from "@/lib/membership";
+
+const session = getSession(Astro.cookies);
+const email = session?.email ?? null;
+const admin = isAdmin(email);
+
+const monthId = currentMonthId(new Date());
+const month = session ? await getMonth(monthId) : null;
+const myVote = month && email ? userVote(month, email) : null;
+const counts = month ? tally(month) : {};
+const totalVotes = Object.values(counts).reduce((a, b) => a + b, 0);
+const winner = month ? winnerBook(month) : null;
+const members = month && month.phase === "closed" ? await getMembers(monthId) : [];
+const joined = email ? members.includes(email) : false;
+
+const monthLabel = new Date(monthId + "-01T00:00:00Z").toLocaleDateString("en-US", {
+  month: "long",
+  year: "numeric",
+  timeZone: "UTC",
+});
+---
+
+<Layout title="TerraShelf — This month" session={session} isAdmin={admin} active="home">
+  <p class="section-label">{monthLabel}</p>
+
+  {!month || month.phase === "draft" ? (
+    <div class="empty card">
+      <h2>Voting hasn't opened yet</h2>
+      <p>The book of the month is still being decided.{admin ? " Head to Admin to set up candidates and open voting." : " Check back soon — or drop ideas in the suggestion box."}</p>
+      <p><a class="btn btn--ghost" href="/suggestions">Browse suggestions</a></p>
+    </div>
+  ) : month.phase === "voting" ? (
+    <>
+      <h1 class="page-title">Vote for {monthLabel}'s book <span class="badge badge--voting">voting open</span></h1>
+      <p class="page-sub">One vote each — change it any time until voting closes.</p>
+      <span id="page-month" data-month={monthId} hidden></span>
+      <div class="grid grid--cards" id="candidates">
+        {month.candidates.map((c) => {
+          const n = counts[c.id] ?? 0;
+          const pct = totalVotes ? Math.round((n / totalVotes) * 100) : 0;
+          return (
+            <div class={`candidate card ${myVote === c.id ? "is-mine" : ""}`} data-book-id={c.id}>
+              <div class="candidate__top">
+                {c.coverUrl ? <img class="book__cover" src={c.coverUrl} alt="" /> : <span class="book__cover">📖</span>}
+                <div>
+                  <div class="book__title">{c.title}</div>
+                  <div class="book__author">{c.author}</div>
+                </div>
+              </div>
+              <div class="candidate__bar"><span style={`width:${pct}%`}></span></div>
+              <div class="candidate__count">
+                <span class="js-count">{n} {n === 1 ? "vote" : "votes"}</span>
+                <button class="btn btn--sm js-vote" type="button">{myVote === c.id ? "Your vote ✓" : "Vote"}</button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </>
+  ) : (
+    <>
+      <h1 class="page-title">Book of the month <span class="badge badge--closed">chosen</span></h1>
+      {winner && (
+        <div class="hero card">
+          {winner.coverUrl ? <img class="hero__cover" src={winner.coverUrl} alt="" /> : <div class="hero__cover"></div>}
+          <div class="hero__body">
+            <div class="hero__kicker">{monthLabel}</div>
+            <h2 class="hero__title">{winner.title}</h2>
+            <div class="hero__author">{winner.author}</div>
+            <div class="hero__actions">
+              <button class="btn js-join" id="join-btn" data-joined={joined ? "1" : "0"}>
+                {joined ? "Leave this read" : "Join this read"}
+              </button>
+              <span class="members" id="member-count">{members.length} {members.length === 1 ? "reader" : "readers"}</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div class="card chat" id="chat" data-month={monthId} style="margin-top:1.25rem">
+        <p class="section-label">Chat</p>
+        <div class="chat__list" id="chat-list"></div>
+        <form class="chat__form" id="chat-form">
+          <input type="text" name="text" maxlength="280" placeholder="Say something about the book…" autocomplete="off" />
+          <button class="btn" type="submit">Send</button>
+        </form>
+      </div>
+    </>
+  )}
+</Layout>
+
+<script>
+  // ---- Voting ----
+  const candidates = document.getElementById("candidates");
+  if (candidates) {
+    candidates.addEventListener("click", async (e) => {
+      const btn = (e.target as HTMLElement).closest<HTMLButtonElement>(".js-vote");
+      if (!btn) return;
+      const cardEl = btn.closest<HTMLElement>(".candidate");
+      const bookId = cardEl?.dataset.bookId;
+      if (!bookId) return;
+      btn.disabled = true;
+      const month = (document.getElementById("page-month") as HTMLElement)?.dataset.month;
+      try {
+        const r = await fetch("/api/vote", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ month, bookId }),
+        });
+        if (r.ok) {
+          const data = (await r.json()) as { tally: Record<string, number>; myVote: string };
+          updateTally(data.tally, data.myVote);
+        }
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  }
+
+  function updateTally(tally: Record<string, number>, myVote: string) {
+    const total = Object.values(tally).reduce((a, b) => a + b, 0);
+    document.querySelectorAll<HTMLElement>(".candidate").forEach((card) => {
+      const id = card.dataset.bookId!;
+      const n = tally[id] ?? 0;
+      const pct = total ? Math.round((n / total) * 100) : 0;
+      card.querySelector<HTMLElement>(".candidate__bar > span")!.style.width = pct + "%";
+      card.querySelector(".js-count")!.textContent = `${n} ${n === 1 ? "vote" : "votes"}`;
+      const mine = id === myVote;
+      card.classList.toggle("is-mine", mine);
+      card.querySelector(".js-vote")!.textContent = mine ? "Your vote ✓" : "Vote";
+    });
+  }
+
+  // ---- Join ----
+  const joinBtn = document.getElementById("join-btn");
+  joinBtn?.addEventListener("click", async () => {
+    const month = (document.getElementById("chat") as HTMLElement)?.dataset.month;
+    (joinBtn as HTMLButtonElement).disabled = true;
+    try {
+      const r = await fetch("/api/membership", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ month }),
+      });
+      if (r.ok) {
+        const data = (await r.json()) as { members: string[]; joined: boolean };
+        joinBtn.textContent = data.joined ? "Leave this read" : "Join this read";
+        joinBtn.dataset.joined = data.joined ? "1" : "0";
+        const mc = document.getElementById("member-count")!;
+        mc.textContent = `${data.members.length} ${data.members.length === 1 ? "reader" : "readers"}`;
+      }
+    } finally {
+      (joinBtn as HTMLButtonElement).disabled = false;
+    }
+  });
+
+  // ---- Chat (light polling) ----
+  const chat = document.getElementById("chat");
+  if (chat) {
+    const month = (chat as HTMLElement).dataset.month!;
+    const list = document.getElementById("chat-list")!;
+    const form = document.getElementById("chat-form") as HTMLFormElement;
+    const input = form.querySelector("input[name='text']") as HTMLInputElement;
+    let me = "";
+    let isAdmin = false;
+    let lastSig = "";
+
+    type Msg = { id: string; author: string; text: string; createdAt: string };
+
+    const nameOnly = (email: string) => (email.includes("@") ? email.slice(0, email.indexOf("@")) : email);
+    const fmt = (iso: string) => {
+      const d = new Date(iso);
+      return Number.isNaN(d.getTime()) ? "" : d.toLocaleString("en-US", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "short" });
+    };
+
+    function render(messages: Msg[]) {
+      const sig = messages.map((m) => m.id).join(",") + "|" + me;
+      if (sig === lastSig) return;
+      lastSig = sig;
+      const atBottom = list.scrollTop + list.clientHeight >= list.scrollHeight - 20;
+      list.innerHTML = "";
+      for (const m of messages) {
+        const item = document.createElement("div");
+        item.className = "msg";
+        const head = document.createElement("div");
+        head.className = "msg__head";
+        const author = document.createElement("span");
+        author.className = "msg__author";
+        author.textContent = nameOnly(m.author);
+        const time = document.createElement("span");
+        time.className = "msg__time";
+        time.textContent = fmt(m.createdAt);
+        head.append(author, time);
+        if (m.author === me || isAdmin) {
+          const del = document.createElement("button");
+          del.className = "msg__del";
+          del.dataset.id = m.id;
+          del.textContent = "delete";
+          head.append(del);
+        }
+        const text = document.createElement("p");
+        text.className = "msg__text";
+        text.textContent = m.text;
+        item.append(head, text);
+        list.append(item);
+      }
+      if (atBottom) list.scrollTop = list.scrollHeight;
+    }
+
+    async function load() {
+      try {
+        const r = await fetch(`/api/chat?month=${encodeURIComponent(month)}`);
+        if (!r.ok) return;
+        const data = (await r.json()) as { messages: Msg[]; me: string; isAdmin: boolean };
+        me = data.me;
+        isAdmin = data.isAdmin;
+        render(data.messages);
+      } catch {}
+    }
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const text = input.value.trim();
+      if (!text) return;
+      const submit = form.querySelector("button")!;
+      submit.disabled = true;
+      try {
+        const r = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ month, text }),
+        });
+        if (r.ok) {
+          const data = (await r.json()) as { messages: Msg[]; me: string; isAdmin: boolean };
+          me = data.me;
+          isAdmin = data.isAdmin;
+          render(data.messages);
+          input.value = "";
+        }
+      } finally {
+        submit.disabled = false;
+        input.focus();
+      }
+    });
+
+    list.addEventListener("click", async (e) => {
+      const del = (e.target as HTMLElement).closest<HTMLButtonElement>(".msg__del");
+      if (!del) return;
+      const r = await fetch(`/api/chat?month=${encodeURIComponent(month)}&id=${encodeURIComponent(del.dataset.id!)}`, { method: "DELETE" });
+      if (r.ok) {
+        const data = (await r.json()) as { messages: Msg[]; me: string; isAdmin: boolean };
+        isAdmin = data.isAdmin;
+        render(data.messages);
+      }
+    });
+
+    load();
+    setInterval(load, 5000);
+  }
+</script>

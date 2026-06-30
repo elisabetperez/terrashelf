@@ -1,0 +1,146 @@
+---
+import Layout from "@/components/Layout.astro";
+import { getSession, isAdmin } from "@/lib/session";
+import { getProfile, emptyProfile, MAX_TOP_BOOKS } from "@/lib/profiles";
+
+const session = getSession(Astro.cookies);
+const admin = isAdmin(session?.email);
+const profile = session
+  ? (await getProfile(session.email)) ?? emptyProfile(session.email, new Date().toISOString())
+  : null;
+---
+
+<Layout title="TerraShelf — My profile" session={session} isAdmin={admin} active="profile">
+  <h1 class="page-title">My profile</h1>
+  <p class="page-sub">Tell the club who you are and your all-time top {MAX_TOP_BOOKS}.</p>
+
+  {profile && (
+    <div class="card" style="padding:1.25rem;max-width:640px" id="profile" data-top={JSON.stringify(profile.topBooks)}>
+      <div class="field">
+        <label for="displayName">Display name</label>
+        <input type="text" id="displayName" value={profile.displayName} />
+      </div>
+      <div class="field">
+        <label for="goodreadsUrl">Goodreads profile URL</label>
+        <input type="url" id="goodreadsUrl" placeholder="https://www.goodreads.com/user/show/…" value={profile.goodreadsUrl} />
+      </div>
+      <div class="field">
+        <label for="bio">Bio</label>
+        <textarea id="bio" maxlength="280" placeholder="A line about your reading taste…">{profile.bio}</textarea>
+      </div>
+
+      <div class="field">
+        <label>Top {MAX_TOP_BOOKS} books</label>
+        <div class="stack" id="top-list" style="margin-bottom:0.6rem"></div>
+        <input type="search" id="book-q" placeholder="Search a book to add…" autocomplete="off" />
+        <div class="results" id="book-results"></div>
+      </div>
+
+      <div class="row">
+        <button class="btn" id="save">Save profile</button>
+        <span id="save-msg" class="muted"></span>
+      </div>
+    </div>
+  )}
+</Layout>
+
+<script>
+  type BookRef = { id: string; olKey: string; title: string; author: string; coverUrl: string };
+  const MAX = 3;
+
+  const root = document.getElementById("profile");
+  if (root) {
+    let top: BookRef[] = JSON.parse(root.dataset.top || "[]");
+    const topList = document.getElementById("top-list")!;
+    const q = document.getElementById("book-q") as HTMLInputElement;
+    const results = document.getElementById("book-results")!;
+    const saveBtn = document.getElementById("save") as HTMLButtonElement;
+    const saveMsg = document.getElementById("save-msg")!;
+
+    function renderTop() {
+      topList.innerHTML = "";
+      top.forEach((b, i) => {
+        const row = document.createElement("div");
+        row.className = "result";
+        row.innerHTML = `${b.coverUrl ? `<img src="${b.coverUrl}" alt="">` : `<span class="result__ph"></span>`}
+          <div class="result__body"><div class="result__title"></div><div class="result__author"></div></div>`;
+        row.querySelector(".result__title")!.textContent = `${i + 1}. ${b.title}`;
+        row.querySelector(".result__author")!.textContent = b.author;
+        const rm = document.createElement("button");
+        rm.className = "btn btn--ghost btn--sm";
+        rm.textContent = "Remove";
+        rm.addEventListener("click", () => { top = top.filter((x) => x.id !== b.id); renderTop(); });
+        row.append(rm);
+        topList.append(row);
+      });
+      q.disabled = top.length >= MAX;
+      q.placeholder = top.length >= MAX ? `Top ${MAX} is full — remove one to swap` : "Search a book to add…";
+    }
+
+    let timer: ReturnType<typeof setTimeout>;
+    q.addEventListener("input", () => {
+      clearTimeout(timer);
+      const term = q.value.trim();
+      if (!term) { results.innerHTML = ""; return; }
+      timer = setTimeout(() => search(term), 300);
+    });
+
+    async function search(term: string) {
+      results.innerHTML = `<p class="muted">Searching…</p>`;
+      try {
+        const r = await fetch(`/api/openlibrary/search?q=${encodeURIComponent(term)}`);
+        const data = (await r.json()) as { books: BookRef[] };
+        results.innerHTML = "";
+        for (const b of data.books) {
+          if (top.some((x) => x.id === b.id)) continue;
+          const row = document.createElement("div");
+          row.className = "result";
+          row.innerHTML = `${b.coverUrl ? `<img src="${b.coverUrl}" alt="">` : `<span class="result__ph"></span>`}
+            <div class="result__body"><div class="result__title"></div><div class="result__author"></div></div>`;
+          row.querySelector(".result__title")!.textContent = b.title;
+          row.querySelector(".result__author")!.textContent = b.author;
+          const add = document.createElement("button");
+          add.className = "btn btn--sm";
+          add.textContent = "Add";
+          add.addEventListener("click", () => {
+            if (top.length >= MAX) return;
+            top.push(b);
+            renderTop();
+            results.innerHTML = "";
+            q.value = "";
+          });
+          row.append(add);
+          results.append(row);
+        }
+      } catch {
+        results.innerHTML = `<p class="error">Search failed.</p>`;
+      }
+    }
+
+    saveBtn.addEventListener("click", async () => {
+      saveBtn.disabled = true;
+      saveMsg.textContent = "Saving…";
+      const body = {
+        displayName: (document.getElementById("displayName") as HTMLInputElement).value,
+        goodreadsUrl: (document.getElementById("goodreadsUrl") as HTMLInputElement).value,
+        bio: (document.getElementById("bio") as HTMLTextAreaElement).value,
+        topBooks: top,
+      };
+      try {
+        const r = await fetch("/api/profile", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const data = await r.json();
+        saveMsg.textContent = r.ok ? "Saved ✓" : data.error ?? "Error";
+      } catch {
+        saveMsg.textContent = "Network error";
+      } finally {
+        saveBtn.disabled = false;
+      }
+    });
+
+    renderTop();
+  }
+</script>

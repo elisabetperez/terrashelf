@@ -1,0 +1,60 @@
+---
+import AuthGate from "@/components/AuthGate.astro";
+import "@/styles/global.css";
+import type { SessionPayload } from "@/lib/auth";
+
+interface Props {
+  title?: string;
+  session: SessionPayload | null;
+  isAdmin?: boolean;
+  active?: "home" | "suggestions" | "members" | "profile" | "admin";
+}
+
+const { title = "TerraShelf", session, isAdmin = false, active } = Astro.props;
+const links: { href: string; label: string; key: NonNullable<Props["active"]> }[] = [
+  { href: "/", label: "This month", key: "home" },
+  { href: "/suggestions", label: "Suggestions", key: "suggestions" },
+  { href: "/members", label: "Members", key: "members" },
+  { href: "/profile", label: "My profile", key: "profile" },
+];
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content="The terrahq.com book club — vote, read and chat about a book every month." />
+  </head>
+  <body>
+    {session ? (
+      <>
+        <header class="site-header">
+          <div class="site-header__inner">
+            <a class="brand" href="/"><span class="brand__mark">📚</span> TerraShelf</a>
+            <nav class="nav">
+              {links.map((l) => (
+                <a href={l.href} aria-current={active === l.key ? "page" : undefined}>{l.label}</a>
+              ))}
+              {isAdmin && (
+                <a class="nav__admin" href="/admin" aria-current={active === "admin" ? "page" : undefined}>Admin</a>
+              )}
+              <span class="nav__who">{session.email}</span>
+              <form method="POST" action="/api/logout" style="display:inline">
+                <button class="btn btn--ghost btn--sm" type="submit">Log out</button>
+              </form>
+            </nav>
+          </div>
+        </header>
+        <main>
+          <div class="container">
+            <slot />
+          </div>
+        </main>
+      </>
+    ) : (
+      <AuthGate />
+    )}
+  </body>
+</html>
