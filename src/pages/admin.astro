@@ -83,6 +83,14 @@ const monthLabel = new Date(monthId + "-01T00:00:00Z").toLocaleDateString("en-US
           <p>Voting is closed. The book of the month is set — see it on the <a href="/">home page</a>.</p>
         </div>
       )}
+
+      {month && (
+        <div class="card" style="padding:1.25rem;margin-top:1.5rem;border-top:4px solid var(--coral)">
+          <p class="section-label" style="color:var(--coral)">Danger zone</p>
+          <p class="muted" style="margin:0.3rem 0 0.8rem">Delete <strong>{monthId}</strong> entirely — the chosen book, its readers and all chat. Use this to reset a month while testing. This can't be undone.</p>
+          <button class="btn btn--danger" data-action="reset">Reset / delete this month</button>
+        </div>
+      )}
     </>
   )}
 </Layout>
@@ -114,6 +122,10 @@ const monthLabel = new Date(monthId + "-01T00:00:00Z").toLocaleDateString("en-US
     document.querySelectorAll<HTMLButtonElement>("[data-action]").forEach((btn) => {
       btn.addEventListener("click", () => {
         const a = btn.dataset.action!;
+        if (a === "reset") {
+          if (!confirm("Delete this month entirely? This removes the chosen book, its readers and all chat. This cannot be undone.")) return;
+          return action({ action: "reset" });
+        }
         if (a === "removeCandidate") return action({ action: a, bookId: btn.dataset.bookId });
         if (a === "close") {
           const winner = (document.getElementById("winner") as HTMLSelectElement | null)?.value || undefined;

@@ -1,4 +1,4 @@
-import { readJSON, writeJSON } from "@/lib/blobs";
+import { readJSON, writeJSON, deleteJSON } from "@/lib/blobs";
 
 const STORE = "memberships";
 
@@ -17,4 +17,8 @@ export async function getMembers(monthId: string): Promise<string[]> {
 
 export async function saveMembers(monthId: string, list: string[]): Promise<void> {
   await writeJSON(STORE, monthId, list);
+}
+
+export async function deleteMembers(monthId: string): Promise<void> {
+  await deleteJSON(STORE, monthId);
 }

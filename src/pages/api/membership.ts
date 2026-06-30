@@ -2,6 +2,16 @@ import type { APIRoute } from "astro";
 import { getSession, unauthorized, json } from "@/lib/session";
 import { getMonth } from "@/lib/months";
 import { getMembers, saveMembers, toggleMember } from "@/lib/membership";
+import { readerCards } from "@/lib/profiles";
+
+export const GET: APIRoute = async ({ url, cookies }) => {
+  const session = getSession(cookies);
+  if (!session) return unauthorized();
+  const month = url.searchParams.get("month");
+  if (!month) return json({ error: "Missing month" }, 400);
+  const members = await getMembers(month);
+  return json({ readers: await readerCards(members), joined: members.includes(session.email) });
+};
 
 export const POST: APIRoute = async ({ request, cookies }) => {
   const session = getSession(cookies);
@@ -14,5 +24,5 @@ export const POST: APIRoute = async ({ request, cookies }) => {
 
   const updated = toggleMember(await getMembers(month), session.email);
   await saveMembers(month, updated);
-  return json({ members: updated, joined: updated.includes(session.email) });
+  return json({ readers: await readerCards(updated), joined: updated.includes(session.email) });
 };

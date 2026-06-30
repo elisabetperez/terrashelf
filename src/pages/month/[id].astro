@@ -1,0 +1,322 @@
+---
+import Layout from "@/components/Layout.astro";
+import { getSession, isAdmin } from "@/lib/session";
+import { getMonth, winnerBook, isValidMonthId } from "@/lib/months";
+import { getMembers } from "@/lib/membership";
+import { readerCards } from "@/lib/profiles";
+
+const session = getSession(Astro.cookies);
+const admin = isAdmin(session?.email);
+const id = Astro.params.id ?? "";
+
+const month = session && isValidMonthId(id) ? await getMonth(id) : null;
+const winner = month ? winnerBook(month) : null;
+const isClosed = month?.phase === "closed" && winner;
+const members = isClosed ? await getMembers(id) : [];
+const readers = members.length ? await readerCards(members) : [];
+const joined = session ? members.includes(session.email) : false;
+
+const monthLabel = isValidMonthId(id)
+  ? new Date(id + "-01T00:00:00Z").toLocaleDateString("en-US", { month: "long", year: "numeric", timeZone: "UTC" })
+  : id;
+
+function initials(name: string): string {
+  return name.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]?.toUpperCase() ?? "").join("");
+}
+---
+
+<Layout title={`TerraShelf — ${monthLabel} discussion`} session={session} isAdmin={admin} active="home">
+  <p><a href="/" class="muted">← This month</a></p>
+
+  {!isClosed ? (
+    <div class="empty card">
+      <h2>No book of the month yet</h2>
+      <p>There's no chosen book for {monthLabel}. Come back once voting has closed.</p>
+    </div>
+  ) : (
+    <>
+      <p><span class="month-pill">{monthLabel}</span></p>
+      <div class="hero card">
+        {winner!.coverUrl ? <img class="hero__cover" src={winner!.coverUrl} alt="" /> : <div class="hero__cover"></div>}
+        <div class="hero__body">
+          <div class="hero__kicker">Book of the month</div>
+          <h1 class="hero__title">{winner!.title}</h1>
+          <div class="hero__author">{winner!.author}</div>
+          <div class="hero__actions">
+            <button class="btn js-join" id="join-btn" data-joined={joined ? "1" : "0"}>
+              {joined ? "Leave this read" : "Join this read"}
+            </button>
+          </div>
+          <div class="readers" id="readers" style="margin-top:0.9rem">
+            {readers.map((r) => (
+              <span class="reader">
+                {r.avatarUrl ? <img class="avatar avatar--sm" src={r.avatarUrl} alt="" /> : <span class="avatar avatar--sm avatar--ph">{initials(r.displayName)}</span>}
+                <span class="reader__name">{r.displayName}</span>
+              </span>
+            ))}
+          </div>
+          <p class="muted" id="readers-empty" style={readers.length ? "display:none" : ""}>No readers yet — be the first to join.</p>
+        </div>
+      </div>
+
+      <div class="card" id="chat" data-month={id} style="margin-top:1.25rem;padding:1.25rem">
+        <p class="section-label">Discussion</p>
+        <form class="chat__form" id="new-thread">
+          <input type="text" name="text" maxlength="280" placeholder="Start a new thread…" autocomplete="off" />
+          <button class="btn" type="submit">Post</button>
+        </form>
+        <div class="threads" id="threads"></div>
+      </div>
+    </>
+  )}
+</Layout>
+
+<script>
+  type Reactions = Record<string, string[]>;
+  type Msg = { id: string; author: string; text: string; createdAt: string; parentId: string | null; reactions: Reactions };
+  type Reader = { email: string; displayName: string; avatarUrl: string };
+
+  const chat = document.getElementById("chat");
+  if (chat) {
+    const month = (chat as HTMLElement).dataset.month!;
+    const threadsEl = document.getElementById("threads")!;
+    const newThreadForm = document.getElementById("new-thread") as HTMLFormElement;
+    let me = "";
+    let isAdmin = false;
+    let allowed: string[] = [];
+    let lastSig = "";
+
+    const nameOnly = (e: string) => (e.includes("@") ? e.slice(0, e.indexOf("@")) : e);
+    const fmt = (iso: string) => {
+      const d = new Date(iso);
+      return Number.isNaN(d.getTime()) ? "" : d.toLocaleString("en-US", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "short" });
+    };
+
+    function reactionsBar(m: Msg): HTMLElement {
+      const bar = document.createElement("div");
+      bar.className = "reactions";
+      for (const [emoji, users] of Object.entries(m.reactions)) {
+        if (!users.length) continue;
+        const chip = document.createElement("button");
+        chip.className = "rx" + (users.includes(me) ? " is-mine" : "");
+        chip.title = users.map(nameOnly).join(", ");
+        chip.textContent = `${emoji} ${users.length}`;
+        chip.addEventListener("click", () => react(m.id, emoji));
+        bar.append(chip);
+      }
+      const add = document.createElement("span");
+      add.className = "rx-add-wrap";
+      const addBtn = document.createElement("button");
+      addBtn.className = "rx rx-add";
+      addBtn.textContent = "+";
+      const picker = document.createElement("span");
+      picker.className = "rx-picker";
+      for (const emoji of allowed) {
+        const b = document.createElement("button");
+        b.textContent = emoji;
+        b.addEventListener("click", () => { picker.classList.remove("is-open"); react(m.id, emoji); });
+        picker.append(b);
+      }
+      addBtn.addEventListener("click", () => picker.classList.toggle("is-open"));
+      add.append(addBtn, picker);
+      bar.append(add);
+      return bar;
+    }
+
+    function messageEl(m: Msg, isRoot: boolean): HTMLElement {
+      const item = document.createElement("div");
+      item.className = isRoot ? "msg msg--root" : "msg msg--reply";
+      const head = document.createElement("div");
+      head.className = "msg__head";
+      const author = document.createElement("span");
+      author.className = "msg__author";
+      author.textContent = nameOnly(m.author);
+      const time = document.createElement("span");
+      time.className = "msg__time";
+      time.textContent = fmt(m.createdAt);
+      head.append(author, time);
+      if (m.author === me || isAdmin) {
+        const del = document.createElement("button");
+        del.className = "msg__del";
+        del.textContent = "delete";
+        del.addEventListener("click", () => remove(m.id));
+        head.append(del);
+      }
+      const text = document.createElement("p");
+      text.className = "msg__text";
+      text.textContent = m.text;
+      item.append(head, text, reactionsBar(m));
+      return item;
+    }
+
+    function render(messages: Msg[]) {
+      const sig = JSON.stringify(messages.map((m) => [m.id, Object.entries(m.reactions).map(([k, v]) => k + v.length).join()])) + me;
+      if (sig === lastSig) return;
+      // Don't clobber while the user is typing in the chat.
+      if (chat!.contains(document.activeElement) && document.activeElement !== document.body && lastSig !== "") {
+        const inForm = (document.activeElement as HTMLElement)?.closest("form");
+        if (inForm) return;
+      }
+      lastSig = sig;
+      threadsEl.innerHTML = "";
+      const roots = messages.filter((m) => m.parentId === null).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+      const repliesByParent = new Map<string, Msg[]>();
+      for (const m of messages) {
+        if (m.parentId) {
+          const arr = repliesByParent.get(m.parentId) ?? [];
+          arr.push(m);
+          repliesByParent.set(m.parentId, arr);
+        }
+      }
+      if (!roots.length) {
+        threadsEl.innerHTML = `<p class="muted">No threads yet. Start the conversation above.</p>`;
+        return;
+      }
+      for (const root of roots) {
+        const thread = document.createElement("div");
+        thread.className = "thread card";
+        thread.append(messageEl(root, true));
+        const replies = (repliesByParent.get(root.id) ?? []).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+        const repliesWrap = document.createElement("div");
+        repliesWrap.className = "thread__replies";
+        replies.forEach((rep) => repliesWrap.append(messageEl(rep, false)));
+        thread.append(repliesWrap);
+
+        const replyForm = document.createElement("form");
+        replyForm.className = "chat__form chat__form--reply";
+        const input = document.createElement("input");
+        input.type = "text";
+        input.maxLength = 280;
+        input.placeholder = "Reply…";
+        input.autocomplete = "off";
+        const submit = document.createElement("button");
+        submit.className = "btn btn--sm";
+        submit.type = "submit";
+        submit.textContent = "Reply";
+        replyForm.append(input, submit);
+        replyForm.addEventListener("submit", async (e) => {
+          e.preventDefault();
+          const text = input.value.trim();
+          if (!text) return;
+          submit.disabled = true;
+          await post(text, root.id);
+          input.value = "";
+          submit.disabled = false;
+        });
+        thread.append(replyForm);
+        threadsEl.append(thread);
+      }
+    }
+
+    function applyData(data: { messages: Msg[]; me: string; isAdmin: boolean; allowedReactions: string[] }) {
+      me = data.me;
+      isAdmin = data.isAdmin;
+      allowed = data.allowedReactions ?? allowed;
+      render(data.messages);
+    }
+
+    async function load() {
+      try {
+        const r = await fetch(`/api/chat?month=${encodeURIComponent(month)}`);
+        if (r.ok) applyData(await r.json());
+      } catch {}
+    }
+
+    async function post(text: string, parentId: string | null) {
+      const r = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ month, text, parentId }),
+      });
+      if (r.ok) { lastSig = ""; applyData(await r.json()); }
+    }
+
+    async function remove(id: string) {
+      const r = await fetch(`/api/chat?month=${encodeURIComponent(month)}&id=${encodeURIComponent(id)}`, { method: "DELETE" });
+      if (r.ok) { lastSig = ""; applyData(await r.json()); }
+    }
+
+    async function react(id: string, emoji: string) {
+      const r = await fetch("/api/chat/react", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ month, id, emoji }),
+      });
+      if (r.ok) { lastSig = ""; applyData(await r.json()); }
+    }
+
+    newThreadForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const input = newThreadForm.querySelector("input")!;
+      const text = input.value.trim();
+      if (!text) return;
+      const submit = newThreadForm.querySelector("button")!;
+      submit.disabled = true;
+      await post(text, null);
+      input.value = "";
+      submit.disabled = false;
+    });
+
+    // Close any open reaction picker on outside click.
+    document.addEventListener("click", (e) => {
+      document.querySelectorAll(".rx-picker.is-open").forEach((p) => {
+        if (!p.parentElement!.contains(e.target as Node)) p.classList.remove("is-open");
+      });
+    });
+
+    load();
+    setInterval(load, 5000);
+  }
+
+  // ---- Join + readers (shared with home) ----
+  const joinBtn = document.getElementById("join-btn");
+  const readersEl = document.getElementById("readers");
+  function ini(name: string) {
+    return name.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]?.toUpperCase() ?? "").join("");
+  }
+  function renderReaders(readers: Reader[]) {
+    if (!readersEl) return;
+    readersEl.innerHTML = "";
+    for (const r of readers) {
+      const chip = document.createElement("span");
+      chip.className = "reader";
+      if (r.avatarUrl) {
+        const img = document.createElement("img");
+        img.className = "avatar avatar--sm";
+        img.src = r.avatarUrl;
+        chip.append(img);
+      } else {
+        const ph = document.createElement("span");
+        ph.className = "avatar avatar--sm avatar--ph";
+        ph.textContent = ini(r.displayName);
+        chip.append(ph);
+      }
+      const name = document.createElement("span");
+      name.className = "reader__name";
+      name.textContent = r.displayName;
+      chip.append(name);
+      readersEl.append(chip);
+    }
+    const empty = document.getElementById("readers-empty");
+    if (empty) (empty as HTMLElement).style.display = readers.length ? "none" : "";
+  }
+  joinBtn?.addEventListener("click", async () => {
+    const month = (document.getElementById("chat") as HTMLElement)?.dataset.month;
+    (joinBtn as HTMLButtonElement).disabled = true;
+    try {
+      const r = await fetch("/api/membership", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ month }),
+      });
+      if (r.ok) {
+        const data = (await r.json()) as { readers: Reader[]; joined: boolean };
+        joinBtn.textContent = data.joined ? "Leave this read" : "Join this read";
+        joinBtn.dataset.joined = data.joined ? "1" : "0";
+        renderReaders(data.readers);
+      }
+    } finally {
+      (joinBtn as HTMLButtonElement).disabled = false;
+    }
+  });
+</script>

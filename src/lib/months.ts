@@ -1,5 +1,5 @@
 import type { BookRef } from "@/lib/books";
-import { readJSON, writeJSON, listKeys } from "@/lib/blobs";
+import { readJSON, writeJSON, listKeys, deleteJSON } from "@/lib/blobs";
 
 export type Phase = "draft" | "voting" | "closed";
 
@@ -125,6 +125,10 @@ export async function getMonth(id: string): Promise<Month | null> {
 
 export async function saveMonth(month: Month): Promise<void> {
   await writeJSON(STORE, month.id, month);
+}
+
+export async function deleteMonth(id: string): Promise<void> {
+  await deleteJSON(STORE, id);
 }
 
 export async function listMonths(): Promise<Month[]> {

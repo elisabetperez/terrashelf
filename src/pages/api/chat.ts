@@ -1,29 +1,50 @@
 import type { APIRoute } from "astro";
 import { getSession, isAdmin, unauthorized, json } from "@/lib/session";
 import { getMonth } from "@/lib/months";
-import { listMessages, saveMessages, addMessage, deleteMessage, newMessageId } from "@/lib/chat";
+import {
+  listMessages,
+  saveMessages,
+  addMessage,
+  deleteMessage,
+  newMessageId,
+  ALLOWED_REACTIONS,
+} from "@/lib/chat";
+
+function payload(messages: unknown, email: string) {
+  return { messages, me: email, isAdmin: isAdmin(email), allowedReactions: ALLOWED_REACTIONS };
+}
 
 export const GET: APIRoute = async ({ url, cookies }) => {
   const session = getSession(cookies);
   if (!session) return unauthorized();
   const month = url.searchParams.get("month");
   if (!month) return json({ error: "Missing month" }, 400);
-  const messages = await listMessages(month);
-  return json({ messages, me: session.email, isAdmin: isAdmin(session.email) });
+  return json(payload(await listMessages(month), session.email));
 };
 
 export const POST: APIRoute = async ({ request, cookies }) => {
   const session = getSession(cookies);
   if (!session) return unauthorized();
-  const { month, text } = (await request.json().catch(() => ({}))) as { month?: string; text?: string };
+  const { month, text, parentId } = (await request.json().catch(() => ({}))) as {
+    month?: string;
+    text?: string;
+    parentId?: string | null;
+  };
   if (!month || !text) return json({ error: "Missing month or text" }, 400);
 
   const m = await getMonth(month);
   if (!m || m.phase !== "closed") return json({ error: "Chat opens once there is a book of the month" }, 400);
   try {
-    const updated = addMessage(await listMessages(month), session.email, text, newMessageId(), new Date().toISOString());
+    const updated = addMessage(
+      await listMessages(month),
+      session.email,
+      text,
+      newMessageId(),
+      new Date().toISOString(),
+      parentId ?? null
+    );
     await saveMessages(month, updated);
-    return json({ messages: updated, me: session.email, isAdmin: isAdmin(session.email) });
+    return json(payload(updated, session.email));
   } catch (err) {
     return json({ error: err instanceof Error ? err.message : "error" }, 400);
   }
@@ -38,7 +59,7 @@ export const DELETE: APIRoute = async ({ url, cookies }) => {
   try {
     const updated = deleteMessage(await listMessages(month), id, session.email, isAdmin(session.email));
     await saveMessages(month, updated);
-    return json({ messages: updated, me: session.email, isAdmin: isAdmin(session.email) });
+    return json(payload(updated, session.email));
   } catch (err) {
     return json({ error: err instanceof Error ? err.message : "error" }, 403);
   }

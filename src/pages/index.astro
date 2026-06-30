@@ -1,8 +1,9 @@
 ---
 import Layout from "@/components/Layout.astro";
 import { getSession, isAdmin } from "@/lib/session";
-import { getMonth, currentMonthId, userVote, tally, winnerBook } from "@/lib/months";
+import { getMonth, listMonths, currentMonthId, userVote, tally, winnerBook } from "@/lib/months";
 import { getMembers } from "@/lib/membership";
+import { listProfiles, readerCards } from "@/lib/profiles";
 
 const session = getSession(Astro.cookies);
 const email = session?.email ?? null;
@@ -15,82 +16,135 @@ const counts = month ? tally(month) : {};
 const totalVotes = Object.values(counts).reduce((a, b) => a + b, 0);
 const winner = month ? winnerBook(month) : null;
 const members = month && month.phase === "closed" ? await getMembers(monthId) : [];
+const readers = members.length ? await readerCards(members) : [];
 const joined = email ? members.includes(email) : false;
 
-const monthLabel = new Date(monthId + "-01T00:00:00Z").toLocaleDateString("en-US", {
-  month: "long",
-  year: "numeric",
-  timeZone: "UTC",
-});
+// History of past books of the month (closed, excluding the current month).
+const allMonths = session ? await listMonths() : [];
+const history = allMonths
+  .filter((m) => m.phase === "closed" && m.id !== monthId && winnerBook(m))
+  .map((m) => ({ id: m.id, book: winnerBook(m)! }));
+
+// Club members for the sidebar.
+const profiles = session ? await listProfiles() : [];
+
+const fmtMonth = (id: string) =>
+  new Date(id + "-01T00:00:00Z").toLocaleDateString("en-US", { month: "long", year: "numeric", timeZone: "UTC" });
+const monthLabel = fmtMonth(monthId);
+
+function initials(name: string): string {
+  return name.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]?.toUpperCase() ?? "").join("");
+}
 ---
 
 <Layout title="TerraShelf — This month" session={session} isAdmin={admin} active="home">
-  <p><span class="month-pill">{monthLabel}</span></p>
+  <div class="home">
+    <div class="home__main">
+      <p><span class="month-pill">{monthLabel}</span></p>
 
-  {!month || month.phase === "draft" ? (
-    <div class="empty card">
-      <h2>Voting hasn't opened yet</h2>
-      <p>The book of the month is still being decided.{admin ? " Head to Admin to set up candidates and open voting." : " Check back soon — or drop ideas in the suggestion box."}</p>
-      <p><a class="btn btn--ghost" href="/suggestions">Browse suggestions</a></p>
-    </div>
-  ) : month.phase === "voting" ? (
-    <>
-      <h1 class="page-title">Vote for {monthLabel}'s book <span class="badge badge--voting">voting open</span></h1>
-      <p class="page-sub">One vote each — change it any time until voting closes.</p>
-      <span id="page-month" data-month={monthId} hidden></span>
-      <div class="grid grid--cards" id="candidates">
-        {month.candidates.map((c) => {
-          const n = counts[c.id] ?? 0;
-          const pct = totalVotes ? Math.round((n / totalVotes) * 100) : 0;
-          return (
-            <div class={`candidate card ${myVote === c.id ? "is-mine" : ""}`} data-book-id={c.id}>
-              <div class="candidate__top">
-                {c.coverUrl ? <img class="book__cover" src={c.coverUrl} alt="" /> : <span class="book__cover">📖</span>}
-                <div>
-                  <div class="book__title">{c.title}</div>
-                  <div class="book__author">{c.author}</div>
-                </div>
-              </div>
-              <div class="candidate__bar"><span style={`width:${pct}%`}></span></div>
-              <div class="candidate__count">
-                <span class="js-count">{n} {n === 1 ? "vote" : "votes"}</span>
-                <button class="btn btn--sm js-vote" type="button">{myVote === c.id ? "Your vote ✓" : "Vote"}</button>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </>
-  ) : (
-    <>
-      <h1 class="page-title">Book of the month <span class="badge badge--closed">chosen</span></h1>
-      {winner && (
-        <div class="hero card">
-          {winner.coverUrl ? <img class="hero__cover" src={winner.coverUrl} alt="" /> : <div class="hero__cover"></div>}
-          <div class="hero__body">
-            <div class="hero__kicker">{monthLabel}</div>
-            <h2 class="hero__title">{winner.title}</h2>
-            <div class="hero__author">{winner.author}</div>
-            <div class="hero__actions">
-              <button class="btn js-join" id="join-btn" data-joined={joined ? "1" : "0"}>
-                {joined ? "Leave this read" : "Join this read"}
-              </button>
-              <span class="members" id="member-count">{members.length} {members.length === 1 ? "reader" : "readers"}</span>
-            </div>
-          </div>
+      {!month || month.phase === "draft" ? (
+        <div class="empty card">
+          <h2>Voting hasn't opened yet</h2>
+          <p>The book of the month is still being decided.{admin ? " Head to Admin to set up candidates and open voting." : " Check back soon — or drop ideas in the suggestion box."}</p>
+          <p><a class="btn btn--ghost" href="/suggestions">Browse suggestions</a></p>
         </div>
+      ) : month.phase === "voting" ? (
+        <>
+          <h1 class="page-title">Vote for {monthLabel}'s book <span class="badge badge--voting">voting open</span></h1>
+          <p class="page-sub">One vote each — change it any time until voting closes.</p>
+          <span id="page-month" data-month={monthId} hidden></span>
+          <div class="grid grid--cards" id="candidates">
+            {month.candidates.map((c) => {
+              const n = counts[c.id] ?? 0;
+              const pct = totalVotes ? Math.round((n / totalVotes) * 100) : 0;
+              return (
+                <div class={`candidate card ${myVote === c.id ? "is-mine" : ""}`} data-book-id={c.id}>
+                  <div class="candidate__top">
+                    {c.coverUrl ? <img class="book__cover" src={c.coverUrl} alt="" /> : <span class="book__cover">📖</span>}
+                    <div>
+                      <div class="book__title">{c.title}</div>
+                      <div class="book__author">{c.author}</div>
+                    </div>
+                  </div>
+                  <div class="candidate__bar"><span style={`width:${pct}%`}></span></div>
+                  <div class="candidate__count">
+                    <span class="js-count">{n} {n === 1 ? "vote" : "votes"}</span>
+                    <button class="btn btn--sm js-vote" type="button">{myVote === c.id ? "Your vote ✓" : "Vote"}</button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      ) : (
+        <>
+          <h1 class="page-title">Book of the month <span class="badge badge--closed">chosen</span></h1>
+          {winner && (
+            <div class="hero card">
+              {winner.coverUrl ? <img class="hero__cover" src={winner.coverUrl} alt="" /> : <div class="hero__cover"></div>}
+              <div class="hero__body">
+                <div class="hero__kicker">{monthLabel}</div>
+                <h2 class="hero__title">{winner.title}</h2>
+                <div class="hero__author">{winner.author}</div>
+                <div class="hero__actions">
+                  <button class="btn js-join" id="join-btn" data-joined={joined ? "1" : "0"}>
+                    {joined ? "Leave this read" : "Join this read"}
+                  </button>
+                  <a class="btn btn--muted" href={`/month/${monthId}`}>Open the discussion →</a>
+                </div>
+                <div class="readers" id="readers" style="margin-top:0.9rem">
+                  {readers.map((r) => (
+                    <span class="reader">
+                      {r.avatarUrl ? <img class="avatar avatar--sm" src={r.avatarUrl} alt="" /> : <span class="avatar avatar--sm avatar--ph">{initials(r.displayName)}</span>}
+                      <span class="reader__name">{r.displayName}</span>
+                    </span>
+                  ))}
+                </div>
+                <p class="muted" id="readers-empty" style={readers.length ? "display:none" : ""}>No readers yet — be the first to join.</p>
+              </div>
+            </div>
+          )}
+          <span id="page-month" data-month={monthId} hidden></span>
+        </>
       )}
 
-      <div class="card chat" id="chat" data-month={monthId} style="margin-top:1.25rem">
-        <p class="section-label">Chat</p>
-        <div class="chat__list" id="chat-list"></div>
-        <form class="chat__form" id="chat-form">
-          <input type="text" name="text" maxlength="280" placeholder="Say something about the book…" autocomplete="off" />
-          <button class="btn" type="submit">Send</button>
-        </form>
+      <section class="history-section">
+        <h2 class="page-title" style="font-size:1.4rem;margin-top:2rem">Past books of the month</h2>
+        {history.length === 0 ? (
+          <p class="muted">No past books yet — the shelf starts filling up once a month closes.</p>
+        ) : (
+          <div class="stack">
+            {history.map((h) => (
+              <a class="card book history__item" href={`/month/${h.id}`}>
+                {h.book.coverUrl ? <img class="book__cover" src={h.book.coverUrl} alt="" /> : <span class="book__cover">📖</span>}
+                <div style="flex:1">
+                  <div class="hero__kicker">{fmtMonth(h.id)}</div>
+                  <div class="book__title">{h.book.title}</div>
+                  <div class="book__author">{h.book.author}</div>
+                </div>
+                <span class="muted">Discussion →</span>
+              </a>
+            ))}
+          </div>
+        )}
+      </section>
+    </div>
+
+    <aside class="home__aside">
+      <div class="card members-widget">
+        <div class="members-widget__count">{profiles.length}</div>
+        <p class="members-widget__label">{profiles.length === 1 ? "member so far" : "members so far"}</p>
+        <div class="member-thumbs">
+          {profiles.map((p) => (
+            <a href="/members" title={p.displayName}>
+              {p.avatarUrl ? <img class="avatar avatar--sm" src={p.avatarUrl} alt={p.displayName} /> : <span class="avatar avatar--sm avatar--ph">{initials(p.displayName)}</span>}
+            </a>
+          ))}
+        </div>
+        <a class="btn btn--ghost btn--sm" href="/members" style="margin-top:0.5rem">See all members</a>
       </div>
-    </>
-  )}
+    </aside>
+  </div>
 </Layout>
 
 <script>
@@ -135,10 +189,44 @@ const monthLabel = new Date(monthId + "-01T00:00:00Z").toLocaleDateString("en-US
     });
   }
 
-  // ---- Join ----
+  // ---- Join + readers ----
+  type Reader = { email: string; displayName: string; avatarUrl: string };
   const joinBtn = document.getElementById("join-btn");
+  const readersEl = document.getElementById("readers");
+
+  function ini(name: string) {
+    return name.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]?.toUpperCase() ?? "").join("");
+  }
+
+  function renderReaders(readers: Reader[]) {
+    if (!readersEl) return;
+    readersEl.innerHTML = "";
+    for (const r of readers) {
+      const chip = document.createElement("span");
+      chip.className = "reader";
+      if (r.avatarUrl) {
+        const img = document.createElement("img");
+        img.className = "avatar avatar--sm";
+        img.src = r.avatarUrl;
+        chip.append(img);
+      } else {
+        const ph = document.createElement("span");
+        ph.className = "avatar avatar--sm avatar--ph";
+        ph.textContent = ini(r.displayName);
+        chip.append(ph);
+      }
+      const name = document.createElement("span");
+      name.className = "reader__name";
+      name.textContent = r.displayName;
+      chip.append(name);
+      readersEl.append(chip);
+    }
+    const empty = document.getElementById("readers-empty");
+    if (empty) (empty as HTMLElement).style.display = readers.length ? "none" : "";
+  }
+
   joinBtn?.addEventListener("click", async () => {
-    const month = (document.getElementById("chat") as HTMLElement)?.dataset.month;
+    const month = (document.getElementById("page-month") as HTMLElement)?.dataset.month;
     (joinBtn as HTMLButtonElement).disabled = true;
     try {
       const r = await fetch("/api/membership", {
@@ -147,118 +235,13 @@ const monthLabel = new Date(monthId + "-01T00:00:00Z").toLocaleDateString("en-US
         body: JSON.stringify({ month }),
       });
       if (r.ok) {
-        const data = (await r.json()) as { members: string[]; joined: boolean };
+        const data = (await r.json()) as { readers: Reader[]; joined: boolean };
         joinBtn.textContent = data.joined ? "Leave this read" : "Join this read";
         joinBtn.dataset.joined = data.joined ? "1" : "0";
-        const mc = document.getElementById("member-count")!;
-        mc.textContent = `${data.members.length} ${data.members.length === 1 ? "reader" : "readers"}`;
+        renderReaders(data.readers);
       }
     } finally {
       (joinBtn as HTMLButtonElement).disabled = false;
     }
   });
-
-  // ---- Chat (light polling) ----
-  const chat = document.getElementById("chat");
-  if (chat) {
-    const month = (chat as HTMLElement).dataset.month!;
-    const list = document.getElementById("chat-list")!;
-    const form = document.getElementById("chat-form") as HTMLFormElement;
-    const input = form.querySelector("input[name='text']") as HTMLInputElement;
-    let me = "";
-    let isAdmin = false;
-    let lastSig = "";
-
-    type Msg = { id: string; author: string; text: string; createdAt: string };
-
-    const nameOnly = (email: string) => (email.includes("@") ? email.slice(0, email.indexOf("@")) : email);
-    const fmt = (iso: string) => {
-      const d = new Date(iso);
-      return Number.isNaN(d.getTime()) ? "" : d.toLocaleString("en-US", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "short" });
-    };
-
-    function render(messages: Msg[]) {
-      const sig = messages.map((m) => m.id).join(",") + "|" + me;
-      if (sig === lastSig) return;
-      lastSig = sig;
-      const atBottom = list.scrollTop + list.clientHeight >= list.scrollHeight - 20;
-      list.innerHTML = "";
-      for (const m of messages) {
-        const item = document.createElement("div");
-        item.className = "msg";
-        const head = document.createElement("div");
-        head.className = "msg__head";
-        const author = document.createElement("span");
-        author.className = "msg__author";
-        author.textContent = nameOnly(m.author);
-        const time = document.createElement("span");
-        time.className = "msg__time";
-        time.textContent = fmt(m.createdAt);
-        head.append(author, time);
-        if (m.author === me || isAdmin) {
-          const del = document.createElement("button");
-          del.className = "msg__del";
-          del.dataset.id = m.id;
-          del.textContent = "delete";
-          head.append(del);
-        }
-        const text = document.createElement("p");
-        text.className = "msg__text";
-        text.textContent = m.text;
-        item.append(head, text);
-        list.append(item);
-      }
-      if (atBottom) list.scrollTop = list.scrollHeight;
-    }
-
-    async function load() {
-      try {
-        const r = await fetch(`/api/chat?month=${encodeURIComponent(month)}`);
-        if (!r.ok) return;
-        const data = (await r.json()) as { messages: Msg[]; me: string; isAdmin: boolean };
-        me = data.me;
-        isAdmin = data.isAdmin;
-        render(data.messages);
-      } catch {}
-    }
-
-    form.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const text = input.value.trim();
-      if (!text) return;
-      const submit = form.querySelector("button")!;
-      submit.disabled = true;
-      try {
-        const r = await fetch("/api/chat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ month, text }),
-        });
-        if (r.ok) {
-          const data = (await r.json()) as { messages: Msg[]; me: string; isAdmin: boolean };
-          me = data.me;
-          isAdmin = data.isAdmin;
-          render(data.messages);
-          input.value = "";
-        }
-      } finally {
-        submit.disabled = false;
-        input.focus();
-      }
-    });
-
-    list.addEventListener("click", async (e) => {
-      const del = (e.target as HTMLElement).closest<HTMLButtonElement>(".msg__del");
-      if (!del) return;
-      const r = await fetch(`/api/chat?month=${encodeURIComponent(month)}&id=${encodeURIComponent(del.dataset.id!)}`, { method: "DELETE" });
-      if (r.ok) {
-        const data = (await r.json()) as { messages: Msg[]; me: string; isAdmin: boolean };
-        isAdmin = data.isAdmin;
-        render(data.messages);
-      }
-    });
-
-    load();
-    setInterval(load, 5000);
-  }
 </script>

@@ -9,11 +9,14 @@ import {
   removeCandidate,
   openVoting,
   closeMonth,
+  deleteMonth,
   type Month,
 } from "@/lib/months";
+import { deleteMembers } from "@/lib/membership";
+import { deleteAllMessages } from "@/lib/chat";
 
 type Body = {
-  action: "create" | "addCandidate" | "removeCandidate" | "openVoting" | "close";
+  action: "create" | "addCandidate" | "removeCandidate" | "openVoting" | "close" | "reset";
   id?: string;
   ref?: Partial<BookRef>;
   bookId?: string;
@@ -35,6 +38,13 @@ export const POST: APIRoute = async ({ request, cookies }) => {
       const month = existing ?? createMonth(body.id);
       await saveMonth(month);
       return json({ month });
+    }
+
+    if (body.action === "reset") {
+      if (!body.id) return json({ error: "Missing month id" }, 400);
+      // Wipe everything for this month: the month itself, its readers and its chat.
+      await Promise.all([deleteMonth(body.id), deleteMembers(body.id), deleteAllMessages(body.id)]);
+      return json({ ok: true });
     }
 
     if (!body.id) return json({ error: "Missing month id" }, 400);

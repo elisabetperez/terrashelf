@@ -1,5 +1,5 @@
 import { getStore } from "@netlify/blobs";
-import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, writeFile, unlink } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 /**
@@ -61,6 +61,19 @@ export async function writeJSON(store: string, key: string, data: unknown): Prom
   } catch (err) {
     if (!isMissingBlobsEnv(err)) throw err;
     await localWrite(store, key, data);
+  }
+}
+
+export async function deleteJSON(store: string, key: string): Promise<void> {
+  try {
+    await getStore(store).delete(key);
+  } catch (err) {
+    if (!isMissingBlobsEnv(err)) throw err;
+    try {
+      await unlink(localPath(store, key));
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
+    }
   }
 }
 

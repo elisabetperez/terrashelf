@@ -129,3 +129,19 @@ export async function listProfiles(): Promise<Profile[]> {
 export function profileKey(email: string): string {
   return email.toLowerCase().replace(/[^a-z0-9]+/g, "_");
 }
+
+export type ReaderCard = { email: string; displayName: string; avatarUrl: string };
+
+/** Map a list of emails to lightweight reader cards (name + avatar). */
+export async function readerCards(emails: string[]): Promise<ReaderCard[]> {
+  return Promise.all(
+    emails.map(async (email) => {
+      const p = await getProfile(email);
+      return {
+        email,
+        displayName: p?.displayName ?? nameFromEmail(email),
+        avatarUrl: p?.avatarUrl ?? "",
+      };
+    })
+  );
+}
