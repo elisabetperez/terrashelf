@@ -7,7 +7,7 @@ interface Props {
   title?: string;
   session: SessionPayload | null;
   isAdmin?: boolean;
-  active?: "home" | "suggestions" | "members" | "profile" | "admin";
+  active?: "home" | "suggestions" | "members" | "profile" | "admin" | "notifications";
 }
 
 const { title = "TerraShelf", session, isAdmin = false, active } = Astro.props;
@@ -40,6 +40,7 @@ const links: { href: string; label: string; key: NonNullable<Props["active"]> }[
               {isAdmin && (
                 <a class="nav__admin" href="/admin" aria-current={active === "admin" ? "page" : undefined}>Admin</a>
               )}
+              <a class="nav__bell" href="/notifications" aria-current={active === "notifications" ? "page" : undefined} title="Notifications" aria-label="Notifications">🔔<span class="nav__badge" id="nav-badge" hidden></span></a>
               <span class="nav__who">{session.email}</span>
               <form method="POST" action="/api/logout" style="display:inline">
                 <button class="btn btn--ghost btn--sm" type="submit">Log out</button>
@@ -52,6 +53,20 @@ const links: { href: string; label: string; key: NonNullable<Props["active"]> }[
             <slot />
           </div>
         </main>
+        <script>
+          (async () => {
+            try {
+              const r = await fetch("/api/notifications");
+              if (!r.ok) return;
+              const { unread } = (await r.json()) as { unread: number };
+              const badge = document.getElementById("nav-badge");
+              if (badge && unread > 0) {
+                badge.textContent = unread > 9 ? "9+" : String(unread);
+                badge.removeAttribute("hidden");
+              }
+            } catch {}
+          })();
+        </script>
       </>
     ) : (
       <AuthGate />

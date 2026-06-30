@@ -1,0 +1,48 @@
+---
+import Layout from "@/components/Layout.astro";
+import { getSession, isAdmin } from "@/lib/session";
+import { collectMentions, getLastSeen, isUnread } from "@/lib/notifications";
+import { nameFromEmail } from "@/lib/profiles";
+
+const session = getSession(Astro.cookies);
+const admin = isAdmin(session?.email);
+const mentions = session ? await collectMentions(session.email) : [];
+const lastSeenAt = session ? await getLastSeen(session.email) : "";
+
+const fmt = (iso: string) => {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? "" : d.toLocaleString("en-US", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "short" });
+};
+const nameOnly = (e: string) => (e.includes("@") ? nameFromEmail(e) : e);
+---
+
+<Layout title="TerraShelf — Notifications" session={session} isAdmin={admin} active="notifications">
+  <h1 class="page-title">Notifications</h1>
+  <p class="page-sub">When someone @mentions you in a discussion, it shows up here.</p>
+
+  {mentions.length === 0 ? (
+    <div class="empty card">
+      <h2>Nothing yet</h2>
+      <p>You'll be notified here when someone mentions you with <strong>@yourname</strong> in a book discussion.</p>
+    </div>
+  ) : (
+    <div class="stack">
+      {mentions.map((m) => (
+        <a class={`card notif ${isUnread(m, lastSeenAt) ? "notif--unread" : ""}`} href={`/month/${m.month}`}>
+          <div class="notif__head">
+            <strong>{nameOnly(m.author)}</strong>
+            <span class="muted">mentioned you in {m.periodLabel}</span>
+            <span class="muted notif__time">{fmt(m.createdAt)}</span>
+          </div>
+          <p class="notif__text">{m.text}</p>
+          <span class="muted">Open discussion →</span>
+        </a>
+      ))}
+    </div>
+  )}
+</Layout>
+
+<script>
+  // Visiting the page marks mentions as seen (clears the nav badge next load).
+  fetch("/api/notifications/seen", { method: "POST" }).catch(() => {});
+</script>

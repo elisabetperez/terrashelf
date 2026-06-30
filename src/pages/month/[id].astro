@@ -66,11 +66,19 @@ function initials(name: string): string {
       </div>
 
       <div class="card" id="chat" data-month={id} data-mentionables={JSON.stringify(mentionables)} style="margin-top:1.25rem;padding:1.25rem">
-        <p class="section-label">Discussion · newest first</p>
-        <form class="chat__form" id="new-thread">
-          <input type="text" name="text" maxlength="280" placeholder="Start a new thread… (use @ to mention)" autocomplete="off" />
+        <div class="row" style="justify-content:space-between;align-items:center">
+          <p class="section-label" style="margin:0">Discussion · newest first</p>
+          <label style="display:flex;align-items:center;gap:0.4rem;margin:0;font-weight:600;font-size:0.85rem">
+            Chapter
+            <select id="topic-filter"><option value="">All</option></select>
+          </label>
+        </div>
+        <form class="chat__form" id="new-thread" style="flex-wrap:wrap">
+          <input type="text" id="new-topic" list="topic-list" placeholder="Chapter / topic (optional)" autocomplete="off" style="flex:0 0 200px" />
+          <input type="text" name="text" maxlength="280" placeholder="Start a new thread… (use @ to mention)" autocomplete="off" style="flex:1;min-width:180px" />
           <button class="btn" type="submit">Post</button>
         </form>
+        <datalist id="topic-list"></datalist>
         <div class="threads" id="threads"></div>
       </div>
     </>
@@ -79,7 +87,7 @@ function initials(name: string): string {
 
 <script>
   type Reactions = Record<string, string[]>;
-  type Msg = { id: string; author: string; text: string; createdAt: string; parentId: string | null; reactions: Reactions };
+  type Msg = { id: string; author: string; text: string; createdAt: string; parentId: string | null; reactions: Reactions; topic: string | null };
   type Reader = { email: string; displayName: string; avatarUrl: string };
   type Mentionable = { handle: string; name: string };
 
@@ -94,6 +102,10 @@ function initials(name: string): string {
     let isAdmin = false;
     let allowed: string[] = [];
     let lastSig = "";
+    let currentMessages: Msg[] = [];
+    let topicFilter = "";
+    const topicFilterEl = document.getElementById("topic-filter") as HTMLSelectElement;
+    const topicListEl = document.getElementById("topic-list") as HTMLDataListElement;
 
     const nameOnly = (e: string) => (e.includes("@") ? e.slice(0, e.indexOf("@")) : e);
     const fmt = (iso: string) => {
@@ -160,7 +172,13 @@ function initials(name: string): string {
       time.className = "msg__time";
       time.textContent = fmt(m.createdAt);
       head.append(author, time);
-      if (m.author === me || isAdmin) {
+      if (isRoot && m.topic) {
+        const chip = document.createElement("span");
+        chip.className = "topic-chip";
+        chip.textContent = m.topic;
+        head.append(chip);
+      }
+      if (m.author === me) {
         const del = document.createElement("button");
         del.className = "msg__del";
         del.textContent = "delete";
@@ -174,11 +192,30 @@ function initials(name: string): string {
       return item;
     }
 
+    function updateTopicControls(messages: Msg[]) {
+      const topics = [...new Set(messages.filter((m) => m.parentId === null && m.topic).map((m) => m.topic as string))].sort();
+      topicListEl.innerHTML = "";
+      topicFilterEl.innerHTML = `<option value="">All</option>`;
+      for (const t of topics) {
+        const opt = document.createElement("option");
+        opt.value = t;
+        topicListEl.append(opt);
+        const fopt = document.createElement("option");
+        fopt.value = t;
+        fopt.textContent = t;
+        topicFilterEl.append(fopt);
+      }
+      topicFilterEl.value = topics.includes(topicFilter) ? topicFilter : "";
+      topicFilter = topicFilterEl.value;
+    }
+
     function render(messages: Msg[]) {
-      const sig = JSON.stringify(messages.map((m) => [m.id, Object.entries(m.reactions).map(([k, v]) => k + v.length).join()])) + me;
+      currentMessages = messages;
+      const sig = JSON.stringify(messages.map((m) => [m.id, m.topic, Object.entries(m.reactions).map(([k, v]) => k + v.length).join()])) + me + "|" + topicFilter;
       if (sig === lastSig) return;
       if (chat!.contains(document.activeElement) && (document.activeElement as HTMLElement)?.closest("form") && lastSig !== "") return;
       lastSig = sig;
+      updateTopicControls(messages);
       threadsEl.innerHTML = "";
       const repliesByParent = new Map<string, Msg[]>();
       for (const m of messages) {
@@ -189,7 +226,7 @@ function initials(name: string): string {
         }
       }
       // Newest threads first, by latest activity (root or any reply).
-      const roots = messages.filter((m) => m.parentId === null);
+      const roots = messages.filter((m) => m.parentId === null && (!topicFilter || m.topic === topicFilter));
       const lastActivity = (root: Msg) =>
         (repliesByParent.get(root.id) ?? []).reduce((acc, r) => (r.createdAt > acc ? r.createdAt : acc), root.createdAt);
       roots.sort((a, b) => lastActivity(b).localeCompare(lastActivity(a)));
@@ -247,8 +284,8 @@ function initials(name: string): string {
         if (r.ok) applyData(await r.json());
       } catch {}
     }
-    async function post(text: string, parentId: string | null) {
-      const r = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ month, text, parentId }) });
+    async function post(text: string, parentId: string | null, topic: string | null = null) {
+      const r = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ month, text, parentId, topic }) });
       if (r.ok) { lastSig = ""; applyData(await r.json()); }
     }
     async function remove(id: string) {
@@ -260,16 +297,24 @@ function initials(name: string): string {
       if (r.ok) { lastSig = ""; applyData(await r.json()); }
     }
 
+    const newTopicInput = document.getElementById("new-topic") as HTMLInputElement;
     newThreadForm.addEventListener("submit", async (e) => {
       e.preventDefault();
-      const input = newThreadForm.querySelector("input")!;
+      const input = newThreadForm.querySelector("input[name='text']") as HTMLInputElement;
       const text = input.value.trim();
       if (!text) return;
       const submit = newThreadForm.querySelector("button")!;
       submit.disabled = true;
-      await post(text, null);
+      await post(text, null, newTopicInput.value.trim() || null);
       input.value = "";
+      newTopicInput.value = "";
       submit.disabled = false;
+    });
+
+    topicFilterEl.addEventListener("change", () => {
+      topicFilter = topicFilterEl.value;
+      lastSig = "";
+      render(currentMessages);
     });
 
     document.addEventListener("click", (e) => {

@@ -5,7 +5,10 @@ export type Suggestion = BookRef & {
   suggestedBy: string; // email
   createdAt: string; // ISO
   interested: string[]; // emails
+  note: string; // optional note from the suggester for the admin
 };
+
+export const MAX_NOTE_CHARS = 280;
 
 const STORE = "suggestions";
 const KEY = "all";
@@ -13,11 +16,17 @@ const KEY = "all";
 // ---- Pure logic (unit-tested) ----
 
 /** Add a suggestion, rejecting duplicates by olKey. Returns the new list. */
-export function addSuggestion(list: Suggestion[], ref: BookRef, email: string, now: string): Suggestion[] {
+export function addSuggestion(list: Suggestion[], ref: BookRef, email: string, now: string, note = ""): Suggestion[] {
   if (list.some((s) => s.olKey === ref.olKey)) {
     throw new Error("That book is already in the suggestion box");
   }
-  const suggestion: Suggestion = { ...ref, suggestedBy: email, createdAt: now, interested: [] };
+  const suggestion: Suggestion = {
+    ...ref,
+    suggestedBy: email,
+    createdAt: now,
+    interested: [],
+    note: note.trim().slice(0, MAX_NOTE_CHARS),
+  };
   return [...list, suggestion];
 }
 

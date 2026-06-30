@@ -13,6 +13,10 @@ const admin = isAdmin(session?.email);
   <div class="card" style="padding:1rem;margin-bottom:1.5rem">
     <label for="q">Search a book to add</label>
     <input type="search" id="q" placeholder="Title, author…" autocomplete="off" />
+    <div class="field" style="margin:0.75rem 0 0">
+      <label for="note">Note for the admin (optional)</label>
+      <input type="text" id="note" maxlength="280" placeholder="Why this book? Any context…" autocomplete="off" />
+    </div>
     <div class="results" id="results"></div>
   </div>
 
@@ -21,9 +25,10 @@ const admin = isAdmin(session?.email);
 
 <script>
   type BookRef = { id: string; olKey: string; title: string; author: string; coverUrl: string };
-  type Suggestion = BookRef & { suggestedBy: string; createdAt: string; interested: string[] };
+  type Suggestion = BookRef & { suggestedBy: string; createdAt: string; interested: string[]; note?: string };
 
   const q = document.getElementById("q") as HTMLInputElement;
+  const noteInput = document.getElementById("note") as HTMLInputElement;
   const results = document.getElementById("results")!;
   const listEl = document.getElementById("suggestions")!;
   let me = "";
@@ -78,11 +83,12 @@ const admin = isAdmin(session?.email);
         const r = await fetch("/api/suggestions", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ olKey: b.olKey, title: b.title, author: b.author, coverUrl: b.coverUrl }),
+          body: JSON.stringify({ olKey: b.olKey, title: b.title, author: b.author, coverUrl: b.coverUrl, note: noteInput.value }),
         });
         const data = await r.json();
         if (r.ok) {
           applyData(data);
+          noteInput.value = "";
           btn.textContent = "Added ✓";
         } else {
           btn.textContent = data.error ?? "Error";
@@ -116,6 +122,7 @@ const admin = isAdmin(session?.email);
           <div class="book__title"></div>
           <div class="book__author"></div>
           <div class="book__meta">suggested by <span class="js-by"></span></div>
+          <p class="book__note js-note" hidden></p>
           <div class="row" style="margin-top:0.6rem">
             <button class="pill js-interest ${mine ? "is-on" : ""}">★ Interested · <span class="js-icount">${s.interested.length}</span></button>
             ${(s.suggestedBy === me || isAdmin) ? `<button class="btn btn--ghost btn--sm js-del">Remove</button>` : ""}
@@ -124,6 +131,11 @@ const admin = isAdmin(session?.email);
       card.querySelector(".book__title")!.textContent = s.title;
       card.querySelector(".book__author")!.textContent = s.author;
       card.querySelector(".js-by")!.textContent = nameOnly(s.suggestedBy);
+      if (s.note) {
+        const noteEl = card.querySelector(".js-note") as HTMLElement;
+        noteEl.textContent = `📝 ${s.note}`;
+        noteEl.hidden = false;
+      }
       card.querySelector(".js-interest")!.addEventListener("click", () => toggleInterest(s.id));
       card.querySelector(".js-del")?.addEventListener("click", () => removeSuggestion(s.id));
       listEl.append(card);

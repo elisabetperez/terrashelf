@@ -10,9 +10,11 @@ export type Message = {
   createdAt: string; // ISO
   parentId: string | null; // null = thread root; otherwise the root message id
   reactions: Reactions;
+  topic: string | null; // optional chapter/topic, only on thread roots
 };
 
 export const MAX_MESSAGE_CHARS = 280;
+export const MAX_TOPIC_CHARS = 60;
 export const ALLOWED_REACTIONS = ["👍", "❤️", "😂", "🔥", "🎉", "🤯", "👀", "📚"] as const;
 
 const STORE = "chat";
@@ -21,12 +23,12 @@ const STORE = "chat";
 
 /** Normalize a stored message (older records may lack newer fields). */
 export function normalize(m: Partial<Message> & { id: string; author: string; text: string; createdAt: string }): Message {
-  return { parentId: null, reactions: {}, ...m } as Message;
+  return { parentId: null, reactions: {}, topic: null, ...m } as Message;
 }
 
 /**
- * Append a message. `parentId` null starts a new thread; otherwise it must be
- * the id of an existing thread root (replies are one level deep).
+ * Append a message. `parentId` null starts a new thread (and may carry a topic);
+ * otherwise it must be the id of an existing thread root (replies are one level deep).
  */
 export function addMessage(
   list: Message[],
@@ -34,7 +36,8 @@ export function addMessage(
   text: string,
   id: string,
   now: string,
-  parentId: string | null = null
+  parentId: string | null = null,
+  topic: string | null = null
 ): Message[] {
   const trimmed = text.trim();
   if (!trimmed) throw new Error("Empty message");
@@ -44,15 +47,20 @@ export function addMessage(
     if (!parent) throw new Error("Thread not found");
     if (parent.parentId !== null) throw new Error("Cannot reply to a reply");
   }
-  return [...list, { id, author, text: trimmed, createdAt: now, parentId, reactions: {} }];
+  // Only thread roots carry a topic.
+  let cleanTopic: string | null = null;
+  if (parentId === null && topic) {
+    cleanTopic = topic.trim().slice(0, MAX_TOPIC_CHARS) || null;
+  }
+  return [...list, { id, author, text: trimmed, createdAt: now, parentId, reactions: {}, topic: cleanTopic }];
 }
 
-/** Delete a message. Author or admin only. Deleting a thread root removes its replies. */
-export function deleteMessage(list: Message[], id: string, requester: string, isAdmin: boolean): Message[] {
+/** Delete a message — only its own author may. Deleting a thread root removes its replies. */
+export function deleteMessage(list: Message[], id: string, requester: string): Message[] {
   const target = list.find((m) => m.id === id);
   if (!target) return list;
-  if (!isAdmin && target.author !== requester) {
-    throw new Error("Not allowed to delete this message");
+  if (target.author !== requester) {
+    throw new Error("You can only delete your own messages");
   }
   if (target.parentId === null) {
     // Root: drop it and every reply under it.

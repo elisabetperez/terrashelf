@@ -13,7 +13,7 @@ export const GET: APIRoute = async ({ cookies }) => {
 export const POST: APIRoute = async ({ request, cookies }) => {
   const session = getSession(cookies);
   if (!session) return unauthorized();
-  const body = (await request.json().catch(() => ({}))) as Partial<BookRef>;
+  const body = (await request.json().catch(() => ({}))) as Partial<BookRef> & { note?: string };
   if (!body.olKey || !body.title) return json({ error: "Missing book" }, 400);
   const ref: BookRef = {
     id: bookIdFromOlKey(body.olKey),
@@ -23,7 +23,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     coverUrl: body.coverUrl ?? "",
   };
   try {
-    const updated = addSuggestion(await listSuggestions(), ref, session.email, new Date().toISOString());
+    const updated = addSuggestion(await listSuggestions(), ref, session.email, new Date().toISOString(), body.note ?? "");
     await saveSuggestions(updated);
     return json({ suggestions: updated, me: session.email, isAdmin: isAdmin(session.email) });
   } catch (err) {

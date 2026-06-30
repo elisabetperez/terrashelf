@@ -69,6 +69,17 @@ h1, h2, h3 { font-family: var(--font); font-weight: 600; line-height: 1.15; marg
 .nav a:hover, .nav a[aria-current="page"] { color: var(--accent-dark); text-decoration: none; }
 .nav__who { color: var(--muted); font-size: 0.85rem; }
 .nav__admin { color: var(--green) !important; }
+.nav__bell { position: relative; font-size: 1.1rem; text-decoration: none; line-height: 1; }
+.nav__bell:hover { text-decoration: none; }
+.nav__badge { position: absolute; top: -8px; right: -10px; background: var(--coral); color: #fff; font-size: 0.65rem; font-weight: 700; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; }
+
+/* ---- Notifications list ---- */
+.notif { display: block; padding: 1rem 1.1rem; text-decoration: none; color: inherit; }
+.notif:hover { text-decoration: none; border-color: var(--accent); }
+.notif--unread { border-left: 4px solid var(--pink); background: rgba(236, 90, 168, 0.04); }
+.notif__head { display: flex; gap: 0.4rem; align-items: baseline; flex-wrap: wrap; }
+.notif__time { margin-left: auto; font-size: 0.78rem; }
+.notif__text { margin: 0.4rem 0; }
 
 /* ---- Layout ---- */
 main { padding: 2rem 0 4rem; }
@@ -112,6 +123,8 @@ main { padding: 2rem 0 4rem; }
 .book__title { font-family: var(--font); font-weight: 600; font-size: 1.05rem; }
 .book__author { color: var(--muted); font-size: 0.9rem; }
 .book__meta { color: var(--muted); font-size: 0.82rem; margin-top: 0.35rem; }
+.book__note { background: var(--surface-2); border-radius: 8px; padding: 0.4rem 0.6rem; margin: 0.5rem 0 0; font-size: 0.85rem; }
+.topic-chip { background: rgba(47, 159, 214, 0.16); color: #1f6f99; font-size: 0.68rem; font-weight: 700; padding: 0.12rem 0.5rem; border-radius: 999px; }
 
 /* ---- Candidate / voting ---- */
 .candidate { padding: 0.9rem; display: flex; flex-direction: column; gap: 0.75rem; border-top: 4px solid var(--surface-2); }

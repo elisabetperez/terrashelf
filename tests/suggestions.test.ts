@@ -20,6 +20,12 @@ describe("addSuggestion", () => {
     const list = seed();
     expect(() => addSuggestion(list, ref, "b@terrahq.com", "x")).toThrow(/already/);
   });
+
+  it("stores an optional note for the admin", () => {
+    const list = addSuggestion([], ref, "a@terrahq.com", "now", "  please read this one  ");
+    expect(list[0].note).toBe("please read this one");
+    expect(seed()[0].note).toBe("");
+  });
 });
 
 describe("removeSuggestion", () => {

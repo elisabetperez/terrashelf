@@ -22,14 +22,11 @@ describe("addMessage", () => {
 });
 
 describe("deleteMessage", () => {
-  it("lets the author delete", () => {
-    expect(deleteMessage(seed(), "m1", "a@terrahq.com", false)).toHaveLength(0);
+  it("lets the author delete their own", () => {
+    expect(deleteMessage(seed(), "m1", "a@terrahq.com")).toHaveLength(0);
   });
-  it("blocks a non-author non-admin", () => {
-    expect(() => deleteMessage(seed(), "m1", "b@terrahq.com", false)).toThrow(/Not allowed/);
-  });
-  it("lets an admin delete anyone's", () => {
-    expect(deleteMessage(seed(), "m1", "b@terrahq.com", true)).toHaveLength(0);
+  it("blocks anyone who is not the author", () => {
+    expect(() => deleteMessage(seed(), "m1", "b@terrahq.com")).toThrow(/only delete your own/);
   });
 });
 
@@ -50,11 +47,18 @@ describe("threads", () => {
     expect(() => addMessage(list, "c@terrahq.com", "x", "m3", NOW, "m2")).toThrow(/reply to a reply/);
   });
 
+  it("carries a topic on the root but not on replies", () => {
+    let list = addMessage([], "a@terrahq.com", "root", "m1", NOW, null, "Chapter 1");
+    expect(list[0].topic).toBe("Chapter 1");
+    list = addMessage(list, "b@terrahq.com", "reply", "m2", NOW, "m1", "Chapter 9");
+    expect(list[1].topic).toBeNull();
+  });
+
   it("deleting a root cascades to its replies", () => {
     let list = addMessage([], "a@terrahq.com", "root", "m1", NOW);
     list = addMessage(list, "b@terrahq.com", "reply", "m2", NOW, "m1");
     list = addMessage(list, "c@terrahq.com", "other root", "m3", NOW);
-    const after = deleteMessage(list, "m1", "a@terrahq.com", true);
+    const after = deleteMessage(list, "m1", "a@terrahq.com");
     expect(after.map((m) => m.id)).toEqual(["m3"]);
   });
 });

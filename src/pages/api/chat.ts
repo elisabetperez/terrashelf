@@ -25,10 +25,11 @@ export const GET: APIRoute = async ({ url, cookies }) => {
 export const POST: APIRoute = async ({ request, cookies }) => {
   const session = getSession(cookies);
   if (!session) return unauthorized();
-  const { month, text, parentId } = (await request.json().catch(() => ({}))) as {
+  const { month, text, parentId, topic } = (await request.json().catch(() => ({}))) as {
     month?: string;
     text?: string;
     parentId?: string | null;
+    topic?: string | null;
   };
   if (!month || !text) return json({ error: "Missing month or text" }, 400);
 
@@ -41,7 +42,8 @@ export const POST: APIRoute = async ({ request, cookies }) => {
       text,
       newMessageId(),
       new Date().toISOString(),
-      parentId ?? null
+      parentId ?? null,
+      topic ?? null
     );
     await saveMessages(month, updated);
     return json(payload(updated, session.email));
@@ -57,7 +59,7 @@ export const DELETE: APIRoute = async ({ url, cookies }) => {
   const id = url.searchParams.get("id");
   if (!month || !id) return json({ error: "Missing month or id" }, 400);
   try {
-    const updated = deleteMessage(await listMessages(month), id, session.email, isAdmin(session.email));
+    const updated = deleteMessage(await listMessages(month), id, session.email);
     await saveMessages(month, updated);
     return json(payload(updated, session.email));
   } catch (err) {
