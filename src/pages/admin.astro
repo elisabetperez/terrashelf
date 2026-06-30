@@ -5,7 +5,7 @@ import {
   getMonth,
   listMonths,
   currentMonthId,
-  isValidMonthId,
+  isValidPeriodId,
   tally,
   displayLabel,
   scheduleText,
@@ -17,11 +17,11 @@ const admin = isAdmin(session?.email);
 
 const allMonths = admin ? await listMonths() : [];
 const active = pickActive(allMonths);
-const requested = Astro.url.searchParams.get("month");
-const managedId = requested && isValidMonthId(requested) ? requested : active?.id ?? currentMonthId(new Date());
-const month = admin ? await getMonth(managedId) : null;
+const requested = Astro.url.searchParams.get("period");
+const managedId = requested && isValidPeriodId(requested) ? requested : active?.id ?? null;
+const month = admin && managedId ? await getMonth(managedId) : null;
 const counts = month ? tally(month) : {};
-const managedLabel = month ? displayLabel(month) : displayLabel({ id: managedId, label: null });
+const managedLabel = month ? displayLabel(month) : null;
 const defaultNew = currentMonthId(new Date());
 ---
 
@@ -31,18 +31,18 @@ const defaultNew = currentMonthId(new Date());
   ) : (
     <>
       <h1 class="page-title">Admin</h1>
-      <p class="page-sub">Manage reading periods — create them with their own dates, run voting, and crown the book of the month.</p>
+      <p class="page-sub">Manage reading periods — create as many as you like (even in the same month), run voting, and crown the book of the month.</p>
       <p class="error" id="admin-error"></p>
 
       <div class="stack" style="margin-bottom:1.5rem">
         <div class="card" style="padding:1.25rem">
-          <p class="section-label">All periods ({allMonths.length})</p>
+          <p class="section-label">All periods ({allMonths.length}) — pick one to edit or reset</p>
           {allMonths.length === 0 ? (
             <p class="muted" style="margin:0.5rem 0 0">None yet. Create the first one below.</p>
           ) : (
             <div class="stack" style="margin-top:0.6rem">
               {allMonths.map((m) => (
-                <a class={`period-row ${m.id === managedId ? "is-managed" : ""}`} href={`/admin?month=${m.id}`}>
+                <a class={`period-row ${m.id === managedId ? "is-managed" : ""}`} href={`/admin?period=${m.id}`}>
                   <span class={`badge badge--${m.phase}`}>{m.phase}</span>
                   <strong style="flex:1">{displayLabel(m)}</strong>
                   {scheduleText(m) && <span class="muted">{scheduleText(m)}</span>}
@@ -66,95 +66,98 @@ const defaultNew = currentMonthId(new Date());
             <div><label for="new-end">End date</label><input type="date" id="new-end" /></div>
             <button class="btn" id="create-period">Create period</button>
           </div>
-          <p class="muted" style="margin:0.6rem 0 0">Dates are optional and need not start on the 1st — they're just shown to readers.</p>
+          <p class="muted" style="margin:0.6rem 0 0">You can create several periods in the same month — each gets its own page. Dates are optional and need not start on the 1st.</p>
         </div>
       </div>
 
-      <h2 class="page-title" style="font-size:1.4rem">
-        Manage: {managedLabel}
-        {month && <span class={`badge badge--${month.phase}`}>{month.phase}</span>}
-      </h2>
-      <span id="page-month" data-month={managedId} hidden></span>
+      {managedId && <span id="page-month" data-month={managedId} hidden></span>}
 
-      {!month ? (
-        <div class="card" style="padding:1.25rem">
-          <p>This period doesn't exist yet.</p>
-          <button class="btn" data-action="create">Create {managedLabel}</button>
-        </div>
+      {!managedId ? (
+        <p class="muted">Pick a period from the list above to manage it, or create one.</p>
+      ) : !month ? (
+        <div class="card" style="padding:1.25rem"><p>That period no longer exists.</p></div>
       ) : (
-        <div class="stack">
-          {month.phase === "draft" ? (
-            <>
-              <div class="card" style="padding:1.25rem">
-                <p class="section-label">Candidates ({month.candidates.length})</p>
-                {month.candidates.length === 0 && <p class="muted">No candidates yet. Add at least 2 to open voting.</p>}
-                <div class="stack" style="margin-top:0.6rem">
-                  {month.candidates.map((c) => (
-                    <div class="book card" style="align-items:center">
-                      {c.coverUrl ? <img class="book__cover" src={c.coverUrl} alt="" /> : <span class="book__cover">📖</span>}
-                      <div style="flex:1">
-                        <div class="book__title">{c.title}</div>
-                        <div class="book__author">{c.author}</div>
+        <>
+          <h2 class="page-title" style="font-size:1.4rem">
+            Manage: {managedLabel}
+            <span class={`badge badge--${month.phase}`}>{month.phase}</span>
+            {scheduleText(month) && <span class="muted" style="font-size:0.9rem;margin-left:0.5rem">{scheduleText(month)}</span>}
+          </h2>
+
+          <div class="stack">
+            {month.phase === "draft" ? (
+              <>
+                <div class="card" style="padding:1.25rem">
+                  <p class="section-label">Candidates ({month.candidates.length})</p>
+                  {month.candidates.length === 0 && <p class="muted">No candidates yet. Add at least 2 to open voting.</p>}
+                  <div class="stack" style="margin-top:0.6rem">
+                    {month.candidates.map((c) => (
+                      <div class="book card" style="align-items:center">
+                        {c.coverUrl ? <img class="book__cover" src={c.coverUrl} alt="" /> : <span class="book__cover">📖</span>}
+                        <div style="flex:1">
+                          <div class="book__title">{c.title}</div>
+                          <div class="book__author">{c.author}</div>
+                        </div>
+                        <button class="btn btn--ghost btn--sm" data-action="removeCandidate" data-book-id={c.id}>Remove</button>
                       </div>
-                      <button class="btn btn--ghost btn--sm" data-action="removeCandidate" data-book-id={c.id}>Remove</button>
-                    </div>
+                    ))}
+                  </div>
+                  <div style="margin-top:1rem">
+                    <button class="btn" data-action="openVoting" disabled={month.candidates.length < 2}>Open voting</button>
+                  </div>
+                </div>
+
+                <div class="card" style="padding:1.25rem">
+                  <p class="section-label">Add a candidate — search</p>
+                  <input type="search" id="cand-q" placeholder="Title, author…" autocomplete="off" />
+                  <div class="results" id="cand-results"></div>
+                </div>
+
+                <div class="card" style="padding:1.25rem">
+                  <p class="section-label">…or pick from the suggestion box</p>
+                  <div class="results" id="sugg-results"><p class="muted">Loading…</p></div>
+                </div>
+              </>
+            ) : month.phase === "voting" ? (
+              <div class="card" style="padding:1.25rem">
+                <p class="section-label">Current tally</p>
+                <div class="stack" style="margin:0.6rem 0 1rem">
+                  {month.candidates.map((c) => (
+                    <div class="row"><strong style="min-width:2rem">{counts[c.id] ?? 0}</strong> <span>{c.title}</span></div>
                   ))}
                 </div>
-                <div style="margin-top:1rem">
-                  <button class="btn" data-action="openVoting" disabled={month.candidates.length < 2}>Open voting</button>
+                <div class="field">
+                  <label for="winner">Winner (leave on “Auto” unless breaking a tie)</label>
+                  <select id="winner" style="font:inherit;padding:0.5rem;border-radius:10px;border:1px solid var(--line)">
+                    <option value="">Auto (most votes)</option>
+                    {month.candidates.map((c) => <option value={c.id}>{c.title}</option>)}
+                  </select>
                 </div>
+                <button class="btn" data-action="close">Close voting & crown the winner</button>
               </div>
-
+            ) : (
               <div class="card" style="padding:1.25rem">
-                <p class="section-label">Add a candidate — search</p>
-                <input type="search" id="cand-q" placeholder="Title, author…" autocomplete="off" />
-                <div class="results" id="cand-results"></div>
+                <p>Voting is closed. The book of the month is set — see the <a href={`/month/${managedId}`}>discussion</a>.</p>
               </div>
+            )}
 
-              <div class="card" style="padding:1.25rem">
-                <p class="section-label">…or pick from the suggestion box</p>
-                <div class="results" id="sugg-results"><p class="muted">Loading…</p></div>
-              </div>
-            </>
-          ) : month.phase === "voting" ? (
             <div class="card" style="padding:1.25rem">
-              <p class="section-label">Current tally</p>
-              <div class="stack" style="margin:0.6rem 0 1rem">
-                {month.candidates.map((c) => (
-                  <div class="row"><strong style="min-width:2rem">{counts[c.id] ?? 0}</strong> <span>{c.title}</span></div>
-                ))}
+              <p class="section-label">Dates & label</p>
+              <div class="row" style="align-items:flex-end;gap:0.75rem;margin-top:0.6rem;flex-wrap:wrap">
+                <div style="flex:1;min-width:160px"><label for="sch-label">Label</label><input type="text" id="sch-label" value={month.label ?? ""} placeholder="e.g. Summer read" /></div>
+                <div><label for="sch-start">Start date</label><input type="date" id="sch-start" value={month.startDate ?? ""} /></div>
+                <div><label for="sch-end">End date</label><input type="date" id="sch-end" value={month.endDate ?? ""} /></div>
+                <button class="btn btn--muted" id="save-schedule">Save dates & label</button>
               </div>
-              <div class="field">
-                <label for="winner">Winner (leave on “Auto” unless breaking a tie)</label>
-                <select id="winner" style="font:inherit;padding:0.5rem;border-radius:10px;border:1px solid var(--line)">
-                  <option value="">Auto (most votes)</option>
-                  {month.candidates.map((c) => <option value={c.id}>{c.title}</option>)}
-                </select>
-              </div>
-              <button class="btn" data-action="close">Close voting & crown the winner</button>
             </div>
-          ) : (
-            <div class="card" style="padding:1.25rem">
-              <p>Voting is closed. The book of the month is set — see the <a href={`/month/${managedId}`}>discussion</a>.</p>
-            </div>
-          )}
 
-          <div class="card" style="padding:1.25rem">
-            <p class="section-label">Dates & label</p>
-            <div class="row" style="align-items:flex-end;gap:0.75rem;margin-top:0.6rem;flex-wrap:wrap">
-              <div style="flex:1;min-width:160px"><label for="sch-label">Label</label><input type="text" id="sch-label" value={month.label ?? ""} placeholder="e.g. Summer read" /></div>
-              <div><label for="sch-start">Start date</label><input type="date" id="sch-start" value={month.startDate ?? ""} /></div>
-              <div><label for="sch-end">End date</label><input type="date" id="sch-end" value={month.endDate ?? ""} /></div>
-              <button class="btn btn--muted" id="save-schedule">Save dates & label</button>
+            <div class="card" style="padding:1.25rem;border-top:4px solid var(--coral)">
+              <p class="section-label" style="color:var(--coral)">Danger zone</p>
+              <p class="muted" style="margin:0.3rem 0 0.8rem">Delete <strong>{managedLabel}</strong> entirely — the chosen book, its readers and all chat. This can't be undone.</p>
+              <button class="btn btn--danger" data-action="reset">Reset / delete this period</button>
             </div>
           </div>
-
-          <div class="card" style="padding:1.25rem;border-top:4px solid var(--coral)">
-            <p class="section-label" style="color:var(--coral)">Danger zone</p>
-            <p class="muted" style="margin:0.3rem 0 0.8rem">Delete <strong>{managedLabel}</strong> entirely — the chosen book, its readers and all chat. This can't be undone.</p>
-            <button class="btn btn--danger" data-action="reset">Reset / delete this period</button>
-          </div>
-        </div>
+        </>
       )}
     </>
   )}
@@ -163,21 +166,44 @@ const defaultNew = currentMonthId(new Date());
 <script>
   type BookRef = { id: string; olKey: string; title: string; author: string; coverUrl: string };
 
+  const errEl = document.getElementById("admin-error");
+
+  // Create a NEW period from the picker (server assigns a unique id).
+  document.getElementById("create-period")?.addEventListener("click", async () => {
+    if (errEl) errEl.textContent = "";
+    const month = (document.getElementById("new-month") as HTMLInputElement).value;
+    if (!month) { if (errEl) errEl.textContent = "Pick a month"; return; }
+    const body = {
+      action: "create",
+      month,
+      label: (document.getElementById("new-label") as HTMLInputElement).value,
+      startDate: (document.getElementById("new-start") as HTMLInputElement).value,
+      endDate: (document.getElementById("new-end") as HTMLInputElement).value,
+    };
+    const r = await fetch("/api/admin/month", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (r.ok && data.month?.id) window.location.href = `/admin?period=${data.month.id}`;
+    else if (errEl) errEl.textContent = data.error ?? "Could not create period";
+  });
+
   const monthEl = document.getElementById("page-month") as HTMLElement | null;
   if (monthEl) {
-    const month = monthEl.dataset.month!;
-    const errEl = document.getElementById("admin-error")!;
+    const period = monthEl.dataset.month!;
 
     async function action(payload: Record<string, unknown>) {
-      errEl.textContent = "";
+      if (errEl) errEl.textContent = "";
       const r = await fetch("/api/admin/month", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: month, ...payload }),
+        body: JSON.stringify({ id: period, ...payload }),
       });
       const data = await r.json().catch(() => ({}));
       if (r.ok) location.reload();
-      else errEl.textContent = data.error ?? "Action failed";
+      else if (errEl) errEl.textContent = data.error ?? "Action failed";
     }
 
     document.querySelectorAll<HTMLButtonElement>("[data-action]").forEach((btn) => {
@@ -196,29 +222,6 @@ const defaultNew = currentMonthId(new Date());
       });
     });
 
-    // Create a NEW period from the picker (own id + optional label/dates).
-    document.getElementById("create-period")?.addEventListener("click", async () => {
-      errEl.textContent = "";
-      const id = (document.getElementById("new-month") as HTMLInputElement).value;
-      if (!id) { errEl.textContent = "Pick a month"; return; }
-      const body = {
-        action: "create",
-        id,
-        label: (document.getElementById("new-label") as HTMLInputElement).value,
-        startDate: (document.getElementById("new-start") as HTMLInputElement).value,
-        endDate: (document.getElementById("new-end") as HTMLInputElement).value,
-      };
-      const r = await fetch("/api/admin/month", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const data = await r.json().catch(() => ({}));
-      if (r.ok) window.location.href = `/admin?month=${id}`;
-      else errEl.textContent = data.error ?? "Could not create period";
-    });
-
-    // Save dates & label for the managed period.
     document.getElementById("save-schedule")?.addEventListener("click", () =>
       action({
         action: "setSchedule",

@@ -1,23 +1,30 @@
 ---
 import Layout from "@/components/Layout.astro";
 import { getSession, isAdmin } from "@/lib/session";
-import { getMonth, winnerBook, isValidMonthId, displayLabel, scheduleText, monthName } from "@/lib/months";
+import { getMonth, winnerBook, isValidPeriodId, displayLabel, scheduleText, monthName } from "@/lib/months";
 import { getMembers } from "@/lib/membership";
-import { readerCards } from "@/lib/profiles";
+import { listProfiles, readerCards, nameFromEmail } from "@/lib/profiles";
 
 const session = getSession(Astro.cookies);
 const admin = isAdmin(session?.email);
 const id = Astro.params.id ?? "";
 
-const month = session && isValidMonthId(id) ? await getMonth(id) : null;
+const month = session && isValidPeriodId(id) ? await getMonth(id) : null;
 const winner = month ? winnerBook(month) : null;
 const isClosed = month?.phase === "closed" && winner;
 const members = isClosed ? await getMembers(id) : [];
 const readers = members.length ? await readerCards(members) : [];
 const joined = session ? members.includes(session.email) : false;
 
-const monthLabel = month ? displayLabel(month) : isValidMonthId(id) ? monthName(id) : id;
+const monthLabel = month ? displayLabel(month) : isValidPeriodId(id) ? monthName(id) : id;
 const monthDates = month ? scheduleText(month) : null;
+
+// People that can be @mentioned: club members with a profile.
+const profiles = isClosed ? await listProfiles() : [];
+const mentionables = profiles.map((p) => ({
+  handle: (p.email.split("@")[0] || "").toLowerCase().replace(/[^a-z0-9._-]/g, ""),
+  name: p.displayName || nameFromEmail(p.email),
+}));
 
 function initials(name: string): string {
   return name.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]?.toUpperCase() ?? "").join("");
@@ -58,10 +65,10 @@ function initials(name: string): string {
         </div>
       </div>
 
-      <div class="card" id="chat" data-month={id} style="margin-top:1.25rem;padding:1.25rem">
-        <p class="section-label">Discussion</p>
+      <div class="card" id="chat" data-month={id} data-mentionables={JSON.stringify(mentionables)} style="margin-top:1.25rem;padding:1.25rem">
+        <p class="section-label">Discussion · newest first</p>
         <form class="chat__form" id="new-thread">
-          <input type="text" name="text" maxlength="280" placeholder="Start a new thread…" autocomplete="off" />
+          <input type="text" name="text" maxlength="280" placeholder="Start a new thread… (use @ to mention)" autocomplete="off" />
           <button class="btn" type="submit">Post</button>
         </form>
         <div class="threads" id="threads"></div>
@@ -74,10 +81,13 @@ function initials(name: string): string {
   type Reactions = Record<string, string[]>;
   type Msg = { id: string; author: string; text: string; createdAt: string; parentId: string | null; reactions: Reactions };
   type Reader = { email: string; displayName: string; avatarUrl: string };
+  type Mentionable = { handle: string; name: string };
 
   const chat = document.getElementById("chat");
   if (chat) {
     const month = (chat as HTMLElement).dataset.month!;
+    const mentionables: Mentionable[] = JSON.parse((chat as HTMLElement).dataset.mentionables || "[]");
+    const handleSet = new Set(mentionables.map((m) => m.handle));
     const threadsEl = document.getElementById("threads")!;
     const newThreadForm = document.getElementById("new-thread") as HTMLFormElement;
     let me = "";
@@ -90,6 +100,22 @@ function initials(name: string): string {
       const d = new Date(iso);
       return Number.isNaN(d.getTime()) ? "" : d.toLocaleString("en-US", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "short" });
     };
+
+    // Render message text with @mentions highlighted (no innerHTML — safe).
+    function renderText(el: HTMLElement, text: string) {
+      const re = /@([a-zA-Z0-9._-]+)/g;
+      let last = 0;
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(text))) {
+        if (m.index > last) el.appendChild(document.createTextNode(text.slice(last, m.index)));
+        const span = document.createElement("span");
+        span.className = "mention" + (handleSet.has(m[1].toLowerCase()) ? " is-known" : "");
+        span.textContent = "@" + m[1];
+        el.appendChild(span);
+        last = re.lastIndex;
+      }
+      if (last < text.length) el.appendChild(document.createTextNode(text.slice(last)));
+    }
 
     function reactionsBar(m: Msg): HTMLElement {
       const bar = document.createElement("div");
@@ -143,7 +169,7 @@ function initials(name: string): string {
       }
       const text = document.createElement("p");
       text.className = "msg__text";
-      text.textContent = m.text;
+      renderText(text, m.text);
       item.append(head, text, reactionsBar(m));
       return item;
     }
@@ -151,14 +177,9 @@ function initials(name: string): string {
     function render(messages: Msg[]) {
       const sig = JSON.stringify(messages.map((m) => [m.id, Object.entries(m.reactions).map(([k, v]) => k + v.length).join()])) + me;
       if (sig === lastSig) return;
-      // Don't clobber while the user is typing in the chat.
-      if (chat!.contains(document.activeElement) && document.activeElement !== document.body && lastSig !== "") {
-        const inForm = (document.activeElement as HTMLElement)?.closest("form");
-        if (inForm) return;
-      }
+      if (chat!.contains(document.activeElement) && (document.activeElement as HTMLElement)?.closest("form") && lastSig !== "") return;
       lastSig = sig;
       threadsEl.innerHTML = "";
-      const roots = messages.filter((m) => m.parentId === null).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
       const repliesByParent = new Map<string, Msg[]>();
       for (const m of messages) {
         if (m.parentId) {
@@ -167,6 +188,12 @@ function initials(name: string): string {
           repliesByParent.set(m.parentId, arr);
         }
       }
+      // Newest threads first, by latest activity (root or any reply).
+      const roots = messages.filter((m) => m.parentId === null);
+      const lastActivity = (root: Msg) =>
+        (repliesByParent.get(root.id) ?? []).reduce((acc, r) => (r.createdAt > acc ? r.createdAt : acc), root.createdAt);
+      roots.sort((a, b) => lastActivity(b).localeCompare(lastActivity(a)));
+
       if (!roots.length) {
         threadsEl.innerHTML = `<p class="muted">No threads yet. Start the conversation above.</p>`;
         return;
@@ -186,7 +213,7 @@ function initials(name: string): string {
         const input = document.createElement("input");
         input.type = "text";
         input.maxLength = 280;
-        input.placeholder = "Reply…";
+        input.placeholder = "Reply… (use @ to mention)";
         input.autocomplete = "off";
         const submit = document.createElement("button");
         submit.className = "btn btn--sm";
@@ -220,27 +247,16 @@ function initials(name: string): string {
         if (r.ok) applyData(await r.json());
       } catch {}
     }
-
     async function post(text: string, parentId: string | null) {
-      const r = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ month, text, parentId }),
-      });
+      const r = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ month, text, parentId }) });
       if (r.ok) { lastSig = ""; applyData(await r.json()); }
     }
-
     async function remove(id: string) {
       const r = await fetch(`/api/chat?month=${encodeURIComponent(month)}&id=${encodeURIComponent(id)}`, { method: "DELETE" });
       if (r.ok) { lastSig = ""; applyData(await r.json()); }
     }
-
     async function react(id: string, emoji: string) {
-      const r = await fetch("/api/chat/react", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ month, id, emoji }),
-      });
+      const r = await fetch("/api/chat/react", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ month, id, emoji }) });
       if (r.ok) { lastSig = ""; applyData(await r.json()); }
     }
 
@@ -256,18 +272,71 @@ function initials(name: string): string {
       submit.disabled = false;
     });
 
-    // Close any open reaction picker on outside click.
     document.addEventListener("click", (e) => {
       document.querySelectorAll(".rx-picker.is-open").forEach((p) => {
         if (!p.parentElement!.contains(e.target as Node)) p.classList.remove("is-open");
       });
     });
 
+    // ---- @mention autocomplete ----
+    const pop = document.createElement("div");
+    pop.className = "mention-pop";
+    pop.style.display = "none";
+    document.body.append(pop);
+    let activeInput: HTMLInputElement | null = null;
+    let matchStart = -1;
+
+    function hidePop() { pop.style.display = "none"; activeInput = null; }
+
+    function showMatches(input: HTMLInputElement) {
+      const caret = input.selectionStart ?? input.value.length;
+      const before = input.value.slice(0, caret);
+      const m = before.match(/@([a-zA-Z0-9._-]*)$/);
+      if (!m) return hidePop();
+      const q = m[1].toLowerCase();
+      const matches = mentionables.filter((x) => x.handle.startsWith(q) || x.name.toLowerCase().includes(q)).slice(0, 6);
+      if (!matches.length) return hidePop();
+      activeInput = input;
+      matchStart = caret - m[0].length;
+      pop.innerHTML = "";
+      matches.forEach((x) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.innerHTML = `<span>${x.name}</span><span class="handle">@${x.handle}</span>`;
+        b.addEventListener("mousedown", (ev) => {
+          ev.preventDefault();
+          const after = input.value.slice(input.selectionStart ?? input.value.length);
+          input.value = input.value.slice(0, matchStart) + "@" + x.handle + " " + after;
+          const pos = matchStart + x.handle.length + 2;
+          input.setSelectionRange(pos, pos);
+          input.focus();
+          hidePop();
+        });
+        pop.append(b);
+      });
+      const rect = input.getBoundingClientRect();
+      pop.style.left = `${rect.left + window.scrollX}px`;
+      pop.style.top = `${rect.bottom + window.scrollY + 4}px`;
+      pop.style.width = `${Math.max(rect.width, 180)}px`;
+      pop.style.display = "block";
+    }
+
+    chat.addEventListener("input", (e) => {
+      const t = e.target as HTMLElement;
+      if (t instanceof HTMLInputElement && t.type === "text") showMatches(t);
+    });
+    chat.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") hidePop();
+    });
+    document.addEventListener("click", (e) => {
+      if (e.target !== activeInput && !pop.contains(e.target as Node)) hidePop();
+    });
+
     load();
-    setInterval(load, 5000);
+    setInterval(load, 2000);
   }
 
-  // ---- Join + readers (shared with home) ----
+  // ---- Join + readers ----
   const joinBtn = document.getElementById("join-btn");
   const readersEl = document.getElementById("readers");
   function ini(name: string) {
@@ -303,11 +372,7 @@ function initials(name: string): string {
     const month = (document.getElementById("chat") as HTMLElement)?.dataset.month;
     (joinBtn as HTMLButtonElement).disabled = true;
     try {
-      const r = await fetch("/api/membership", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ month }),
-      });
+      const r = await fetch("/api/membership", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ month }) });
       if (r.ok) {
         const data = (await r.json()) as { readers: Reader[]; joined: boolean };
         joinBtn.textContent = data.joined ? "Leave this read" : "Join this read";

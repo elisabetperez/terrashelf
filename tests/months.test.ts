@@ -14,6 +14,8 @@ import {
   scheduleText,
   pickActive,
   monthName,
+  newPeriodId,
+  isValidPeriodId,
   type Month,
 } from "@/lib/months";
 import type { BookRef } from "@/lib/books";
@@ -24,7 +26,7 @@ const b: BookRef = { id: "B", olKey: "/works/B", title: "B", author: "", coverUr
 const c: BookRef = { id: "C", olKey: "/works/C", title: "C", author: "", coverUrl: "" };
 
 function votingMonth(): Month {
-  let m = createMonth("2026-07");
+  let m = createMonth("2026-07", "2026-07");
   m = addCandidate(m, a);
   m = addCandidate(m, b);
   m = addCandidate(m, c);
@@ -40,7 +42,7 @@ describe("currentMonthId", () => {
 
 describe("candidate management", () => {
   it("adds and dedupes candidates only in draft", () => {
-    let m = createMonth("2026-07");
+    let m = createMonth("2026-07", "2026-07");
     m = addCandidate(m, a);
     m = addCandidate(m, a); // dup ignored
     expect(m.candidates).toHaveLength(1);
@@ -49,7 +51,7 @@ describe("candidate management", () => {
   });
 
   it("blocks opening voting with fewer than 2 candidates", () => {
-    let m = createMonth("2026-07");
+    let m = createMonth("2026-07", "2026-07");
     m = addCandidate(m, a);
     expect(() => openVoting(m, NOW)).toThrow(/at least 2/);
   });
@@ -75,7 +77,7 @@ describe("castVote", () => {
   });
 
   it("rejects votes when not in voting phase", () => {
-    const draft = addCandidate(createMonth("2026-07"), a);
+    const draft = addCandidate(createMonth("2026-07", "2026-07"), a);
     expect(() => castVote(draft, "A", "u1@terrahq.com")).toThrow(/not open/);
   });
 
@@ -123,7 +125,7 @@ describe("closeMonth", () => {
 
 describe("schedule & labels", () => {
   it("sets a custom label and reading-period dates not tied to day 1", () => {
-    const m = setSchedule(createMonth("2026-06"), { label: "Summer read", startDate: "2026-06-15", endDate: "2026-07-15" });
+    const m = setSchedule(createMonth("2026-06", "2026-06"), { label: "Summer read", startDate: "2026-06-15", endDate: "2026-07-15" });
     expect(m.label).toBe("Summer read");
     expect(m.startDate).toBe("2026-06-15");
     expect(displayLabel(m)).toBe("Summer read");
@@ -131,19 +133,33 @@ describe("schedule & labels", () => {
   });
 
   it("falls back to the month name when no label is set", () => {
-    expect(displayLabel(createMonth("2026-06"))).toBe(monthName("2026-06"));
+    expect(displayLabel(createMonth("2026-06", "2026-06"))).toBe(monthName("2026-06"));
     expect(monthName("2026-06")).toBe("June 2026");
-    expect(scheduleText(createMonth("2026-06"))).toBeNull();
+    expect(scheduleText(createMonth("2026-06", "2026-06"))).toBeNull();
   });
 
   it("rejects a malformed date and an inverted range", () => {
-    expect(() => setSchedule(createMonth("2026-06"), { startDate: "15-06-2026" })).toThrow(/YYYY-MM-DD/);
-    expect(() => setSchedule(createMonth("2026-06"), { startDate: "2026-07-01", endDate: "2026-06-01" })).toThrow(/on or before/);
+    expect(() => setSchedule(createMonth("2026-06", "2026-06"), { startDate: "15-06-2026" })).toThrow(/YYYY-MM-DD/);
+    expect(() => setSchedule(createMonth("2026-06", "2026-06"), { startDate: "2026-07-01", endDate: "2026-06-01" })).toThrow(/on or before/);
+  });
+});
+
+describe("period ids", () => {
+  it("uses the bare month when free, then numbered suffixes (multiple per month)", () => {
+    expect(newPeriodId("2026-06", [])).toBe("2026-06");
+    expect(newPeriodId("2026-06", ["2026-06"])).toBe("2026-06-2");
+    expect(newPeriodId("2026-06", ["2026-06", "2026-06-2"])).toBe("2026-06-3");
+  });
+  it("validates slug ids", () => {
+    expect(isValidPeriodId("2026-06")).toBe(true);
+    expect(isValidPeriodId("2026-06-2")).toBe(true);
+    expect(isValidPeriodId("../etc")).toBe(false);
+    expect(isValidPeriodId("")).toBe(false);
   });
 });
 
 describe("pickActive", () => {
-  const m = (id: string, phase: Month["phase"]): Month => ({ ...createMonth(id), phase });
+  const m = (id: string, phase: Month["phase"]): Month => ({ ...createMonth(id, id), phase });
   it("prefers voting, then most recent closed, then draft", () => {
     expect(pickActive([m("2026-05", "closed"), m("2026-06", "voting")])?.id).toBe("2026-06");
     expect(pickActive([m("2026-05", "closed"), m("2026-06", "closed")])?.id).toBe("2026-06");

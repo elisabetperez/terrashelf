@@ -1,10 +1,12 @@
 import type { BookRef } from "@/lib/books";
 import { readJSON, writeJSON, listKeys, deleteJSON } from "@/lib/blobs";
+import { randomBytes } from "node:crypto";
 
 export type Phase = "draft" | "voting" | "closed";
 
 export type Month = {
-  id: string; // "2026-07" — the storage key / identity
+  id: string; // unique period id / storage key, e.g. "2026-07" or "2026-07-2"
+  month: string; // YYYY-MM calendar association (for naming + ordering)
   phase: Phase;
   candidates: BookRef[];
   votes: Record<string, string[]>; // bookId -> emails
@@ -18,6 +20,7 @@ export type Month = {
 
 const STORE = "months";
 const MONTH_ID_RE = /^\d{4}-\d{2}$/;
+const PERIOD_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 
 // ---- Pure logic (unit-tested) ----
 
@@ -32,10 +35,28 @@ export function isValidMonthId(id: string): boolean {
   return MONTH_ID_RE.test(id);
 }
 
-export function createMonth(id: string): Month {
-  if (!isValidMonthId(id)) throw new Error("Invalid month id (expected YYYY-MM)");
+/** A period id is a URL-safe slug (e.g. "2026-06" or "2026-06-2"). */
+export function isValidPeriodId(id: string): boolean {
+  return PERIOD_ID_RE.test(id);
+}
+
+/** A fresh unique period id for a month, given the ids already taken. */
+export function newPeriodId(month: string, taken: Iterable<string>): string {
+  const used = new Set(taken);
+  if (!used.has(month)) return month;
+  for (let n = 2; n < 1000; n++) {
+    const candidate = `${month}-${n}`;
+    if (!used.has(candidate)) return candidate;
+  }
+  return `${month}-${randomBytes(3).toString("hex")}`;
+}
+
+export function createMonth(id: string, month: string): Month {
+  if (!isValidPeriodId(id)) throw new Error("Invalid period id");
+  if (!isValidMonthId(month)) throw new Error("Invalid month (expected YYYY-MM)");
   return {
     id,
+    month,
     phase: "draft",
     candidates: [],
     votes: {},
@@ -75,10 +96,10 @@ export function setSchedule(
   };
 }
 
-/** Human month name from an id, e.g. "June 2026". */
-export function monthName(id: string): string {
-  if (!isValidMonthId(id)) return id;
-  return new Date(id + "-01T00:00:00Z").toLocaleDateString("en-US", {
+/** Human month name from a YYYY-MM string, e.g. "June 2026". */
+export function monthName(month: string): string {
+  if (!isValidMonthId(month)) return month;
+  return new Date(month + "-01T00:00:00Z").toLocaleDateString("en-US", {
     month: "long",
     year: "numeric",
     timeZone: "UTC",
@@ -86,8 +107,8 @@ export function monthName(id: string): string {
 }
 
 /** Display label: the custom label if set, otherwise the month name. */
-export function displayLabel(month: Pick<Month, "id" | "label">): string {
-  return month.label || monthName(month.id);
+export function displayLabel(month: Pick<Month, "month" | "label">): string {
+  return month.label || monthName(month.month);
 }
 
 /** A short "Jun 15 – Jul 15" reading-period string, or null when no dates are set. */
@@ -106,7 +127,8 @@ export function scheduleText(month: Pick<Month, "startDate" | "endDate">): strin
  * recent draft. Recency is by startDate when set, else by id.
  */
 export function pickActive(months: Month[]): Month | null {
-  const order = (a: Month, b: Month) => (b.startDate ?? b.id).localeCompare(a.startDate ?? a.id);
+  const key = (m: Month) => `${m.startDate ?? m.month}~${m.id}`;
+  const order = (a: Month, b: Month) => key(b).localeCompare(key(a));
   const inPhase = (p: Phase) => months.filter((m) => m.phase === p).sort(order);
   return inPhase("voting")[0] ?? inPhase("closed")[0] ?? inPhase("draft")[0] ?? null;
 }
@@ -195,9 +217,21 @@ export function winnerBook(month: Month): BookRef | null {
 
 // ---- Persistence ----
 
+/** Backfill fields for records written before they existed. */
+function normalizeMonth(raw: Month | null): Month | null {
+  if (!raw) return null;
+  return {
+    ...raw,
+    month: raw.month ?? (isValidMonthId(raw.id) ? raw.id : raw.id.slice(0, 7)),
+    label: raw.label ?? null,
+    startDate: raw.startDate ?? null,
+    endDate: raw.endDate ?? null,
+  };
+}
+
 export async function getMonth(id: string): Promise<Month | null> {
-  if (!isValidMonthId(id)) return null;
-  return readJSON<Month | null>(STORE, id, null);
+  if (!isValidPeriodId(id)) return null;
+  return normalizeMonth(await readJSON<Month | null>(STORE, id, null));
 }
 
 export async function saveMonth(month: Month): Promise<void> {
@@ -209,7 +243,9 @@ export async function deleteMonth(id: string): Promise<void> {
 }
 
 export async function listMonths(): Promise<Month[]> {
-  const keys = (await listKeys(STORE)).filter(isValidMonthId);
+  const keys = (await listKeys(STORE)).filter(isValidPeriodId);
   const months = await Promise.all(keys.map((k) => getMonth(k)));
-  return months.filter((m): m is Month => m !== null).sort((a, b) => b.id.localeCompare(a.id));
+  return months
+    .filter((m): m is Month => m !== null)
+    .sort((a, b) => `${b.month}~${b.id}`.localeCompare(`${a.month}~${a.id}`));
 }

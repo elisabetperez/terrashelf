@@ -192,6 +192,14 @@ main { padding: 2rem 0 4rem; }
 .rx-picker button { font-size: 1.1rem; background: none; border: none; cursor: pointer; padding: 0.1rem 0.2rem; border-radius: 6px; }
 .rx-picker button:hover { background: var(--surface-2); }
 
+/* ---- Mentions ---- */
+.mention { color: var(--accent-dark); font-weight: 600; }
+.mention.is-known { background: rgba(236, 90, 168, 0.12); border-radius: 4px; padding: 0 3px; }
+.mention-pop { position: absolute; z-index: 40; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow); max-height: 220px; overflow: auto; }
+.mention-pop button { display: flex; flex-direction: column; align-items: flex-start; gap: 0.1rem; width: 100%; text-align: left; background: none; border: none; padding: 0.45rem 0.7rem; cursor: pointer; font: inherit; }
+.mention-pop button:hover { background: var(--surface-2); }
+.mention-pop .handle { color: var(--muted); font-size: 0.78rem; }
+
 /* ---- Forms ---- */
 input[type="text"], input[type="search"], input[type="url"], textarea {
   font: inherit; padding: 0.55rem 0.75rem; border: 1px solid var(--line);

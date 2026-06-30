@@ -3,8 +3,10 @@ import { getSession, isAdmin, unauthorized, forbidden, json } from "@/lib/sessio
 import { bookIdFromOlKey, type BookRef } from "@/lib/books";
 import {
   getMonth,
+  listMonths,
   saveMonth,
   createMonth,
+  newPeriodId,
   addCandidate,
   removeCandidate,
   openVoting,
@@ -18,7 +20,8 @@ import { deleteAllMessages } from "@/lib/chat";
 
 type Body = {
   action: "create" | "addCandidate" | "removeCandidate" | "openVoting" | "close" | "reset" | "setSchedule";
-  id?: string;
+  id?: string; // period id (for existing periods)
+  month?: string; // YYYY-MM (for creating a new period)
   ref?: Partial<BookRef>;
   bookId?: string;
   winnerBookId?: string;
@@ -37,9 +40,10 @@ export const POST: APIRoute = async ({ request, cookies }) => {
 
   try {
     if (body.action === "create") {
-      if (!body.id) return json({ error: "Missing month id" }, 400);
-      const existing = await getMonth(body.id);
-      let month = existing ?? createMonth(body.id);
+      if (!body.month) return json({ error: "Missing month" }, 400);
+      const existingIds = (await listMonths()).map((m) => m.id);
+      const id = newPeriodId(body.month, existingIds);
+      let month = createMonth(id, body.month);
       if (body.label !== undefined || body.startDate !== undefined || body.endDate !== undefined) {
         month = setSchedule(month, { label: body.label, startDate: body.startDate, endDate: body.endDate });
       }
