@@ -76,7 +76,7 @@ function initials(name: string): string {
         </div>
         <form class="chat__form" id="new-thread" style="flex-wrap:wrap">
           <input type="text" id="new-topic" list="topic-list" placeholder="Chapter / topic (optional)" autocomplete="off" style="flex:0 0 200px" />
-          <input type="text" name="text" maxlength="280" placeholder="Start a new thread… (use @ to mention)" autocomplete="off" style="flex:1;min-width:180px" />
+          <input type="text" name="text" maxlength="1000" placeholder="Start a thread… **bold**, ||spoiler||, links, @mention" autocomplete="off" style="flex:1;min-width:180px" />
           <button class="btn" type="submit">Post</button>
         </form>
         <datalist id="topic-list"></datalist>
@@ -103,9 +103,15 @@ function initials(name: string): string {
     let isAdmin = false;
     let allowed: string[] = [];
     let lastSig = "";
-    let lastMutation = 0; // client time of the last local write; drops stale in-flight polls
+    let mutationSeq = 0; // bumped on every local write; drops stale in-flight polls
+    let pauseUntil = 0; // briefly pause polling after a local write so nothing flickers
     let currentMessages: Msg[] = [];
     let topicFilter = "";
+
+    function bumpMutation() {
+      mutationSeq++;
+      pauseUntil = Date.now() + 2500;
+    }
     const topicFilterEl = document.getElementById("topic-filter") as HTMLSelectElement;
     const topicListEl = document.getElementById("topic-list") as HTMLDataListElement;
 
@@ -115,20 +121,98 @@ function initials(name: string): string {
       return Number.isNaN(d.getTime()) ? "" : d.toLocaleString("en-US", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "short" });
     };
 
-    // Render message text with @mentions highlighted (no innerHTML — safe).
-    function renderText(el: HTMLElement, text: string) {
-      const re = /@([a-zA-Z0-9._-]+)/g;
+    const isImageUrl = (u: string) => /\.(gif|png|jpe?g|webp)(\?[^\s]*)?$/i.test(u);
+    function makeLink(text: string, url: string): HTMLAnchorElement {
+      const a = document.createElement("a");
+      a.href = url;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer nofollow";
+      a.textContent = text;
+      return a;
+    }
+
+    // Rich, safe rendering: **bold**, [text](url), bare links, image/GIF URLs,
+    // ||spoilers|| and @mentions. Built with DOM nodes — never innerHTML.
+    function renderRich(el: HTMLElement, text: string) {
+      const TOKEN = /(\|\|[\s\S]+?\|\|)|(\*\*[\s\S]+?\*\*)|(\[[^\]]+\]\(https?:\/\/[^\s)]+\))|(https?:\/\/[^\s]+)|(@[a-zA-Z0-9._-]+)/g;
       let last = 0;
       let m: RegExpExecArray | null;
-      while ((m = re.exec(text))) {
+      while ((m = TOKEN.exec(text))) {
         if (m.index > last) el.appendChild(document.createTextNode(text.slice(last, m.index)));
-        const span = document.createElement("span");
-        span.className = "mention" + (handleSet.has(m[1].toLowerCase()) ? " is-known" : "");
-        span.textContent = "@" + m[1];
-        el.appendChild(span);
-        last = re.lastIndex;
+        const tok = m[0];
+        if (m[1]) {
+          const sp = document.createElement("span");
+          sp.className = "spoiler";
+          sp.textContent = tok.slice(2, -2);
+          sp.title = "Spoiler — click to reveal";
+          sp.addEventListener("click", () => sp.classList.add("is-open"));
+          el.appendChild(sp);
+        } else if (m[2]) {
+          const b = document.createElement("strong");
+          b.textContent = tok.slice(2, -2);
+          el.appendChild(b);
+        } else if (m[3]) {
+          const mm = tok.match(/^\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)$/);
+          if (mm) el.appendChild(makeLink(mm[1], mm[2]));
+          else el.appendChild(document.createTextNode(tok));
+        } else if (m[4]) {
+          if (isImageUrl(tok)) {
+            const img = document.createElement("img");
+            img.className = "msg-img";
+            img.src = tok;
+            img.alt = "";
+            img.loading = "lazy";
+            el.appendChild(img);
+          } else {
+            el.appendChild(makeLink(tok, tok));
+          }
+        } else if (m[5]) {
+          const span = document.createElement("span");
+          const handle = tok.slice(1);
+          span.className = "mention" + (handleSet.has(handle.toLowerCase()) ? " is-known" : "");
+          span.textContent = tok;
+          el.appendChild(span);
+        }
+        last = TOKEN.lastIndex;
       }
       if (last < text.length) el.appendChild(document.createTextNode(text.slice(last)));
+    }
+
+    // A small formatting toolbar bound to a text input.
+    function wrapSel(input: HTMLInputElement, before: string, after: string, ph: string) {
+      const s = input.selectionStart ?? input.value.length;
+      const e = input.selectionEnd ?? s;
+      const sel = input.value.slice(s, e) || ph;
+      input.value = input.value.slice(0, s) + before + sel + after + input.value.slice(e);
+      input.focus();
+      input.setSelectionRange(s + before.length, s + before.length + sel.length);
+    }
+    function makeToolbar(input: HTMLInputElement): HTMLElement {
+      const bar = document.createElement("div");
+      bar.className = "editor-bar";
+      const mk = (label: string, title: string, fn: () => void) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.title = title;
+        b.innerHTML = label;
+        b.addEventListener("click", fn);
+        bar.append(b);
+      };
+      mk("<strong>B</strong>", "Bold", () => wrapSel(input, "**", "**", "bold"));
+      mk("🔗", "Link", () => {
+        const url = prompt("Link URL (https://…)");
+        if (url) wrapSel(input, "[", `](${url})`, "text");
+      });
+      mk("👁️", "Spoiler", () => wrapSel(input, "||", "||", "spoiler"));
+      mk("GIF", "Insert image/GIF by URL", () => {
+        const url = prompt("Image or GIF URL (https://…)");
+        if (url) {
+          const at = input.selectionStart ?? input.value.length;
+          input.value = input.value.slice(0, at) + " " + url + " " + input.value.slice(at);
+          input.focus();
+        }
+      });
+      return bar;
     }
 
     function reactionsBar(m: Msg): HTMLElement {
@@ -189,7 +273,7 @@ function initials(name: string): string {
       }
       const text = document.createElement("p");
       text.className = "msg__text";
-      renderText(text, m.text);
+      renderRich(text, m.text);
       item.append(head, text, reactionsBar(m));
       return item;
     }
@@ -251,8 +335,8 @@ function initials(name: string): string {
         replyForm.className = "chat__form chat__form--reply";
         const input = document.createElement("input");
         input.type = "text";
-        input.maxLength = 280;
-        input.placeholder = "Reply… (use @ to mention)";
+        input.maxLength = 1000;
+        input.placeholder = "Reply… **bold**, ||spoiler||, links, @mention";
         input.autocomplete = "off";
         const submit = document.createElement("button");
         submit.className = "btn btn--sm";
@@ -268,6 +352,7 @@ function initials(name: string): string {
           input.value = "";
           submit.disabled = false;
         });
+        thread.append(makeToolbar(input));
         thread.append(replyForm);
         threadsEl.append(thread);
       }
@@ -281,31 +366,34 @@ function initials(name: string): string {
     }
 
     async function load() {
-      const issuedAt = Date.now();
+      // Pause briefly right after a local write so a poll can't flicker the new state.
+      if (Date.now() < pauseUntil) return;
+      const seq = mutationSeq;
       try {
         const r = await fetch(`/api/chat?month=${encodeURIComponent(month)}`);
         if (!r.ok) return;
         const data = await r.json();
-        // Drop a poll that was already in flight when a local write happened —
-        // it may carry stale data and would make the new message flicker away.
-        if (issuedAt < lastMutation) return;
+        // A local write happened while this poll was in flight — its data is stale, drop it.
+        if (seq !== mutationSeq) return;
         applyData(data);
       } catch {}
     }
     async function post(text: string, parentId: string | null, topic: string | null = null) {
       const r = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ month, text, parentId, topic }) });
-      if (r.ok) { lastMutation = Date.now(); lastSig = ""; applyData(await r.json()); }
+      if (r.ok) { bumpMutation(); lastSig = ""; applyData(await r.json()); }
     }
     async function remove(id: string) {
       const r = await fetch(`/api/chat?month=${encodeURIComponent(month)}&id=${encodeURIComponent(id)}`, { method: "DELETE" });
-      if (r.ok) { lastMutation = Date.now(); lastSig = ""; applyData(await r.json()); }
+      if (r.ok) { bumpMutation(); lastSig = ""; applyData(await r.json()); }
     }
     async function react(id: string, emoji: string) {
       const r = await fetch("/api/chat/react", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ month, id, emoji }) });
-      if (r.ok) { lastMutation = Date.now(); lastSig = ""; applyData(await r.json()); }
+      if (r.ok) { bumpMutation(); lastSig = ""; applyData(await r.json()); }
     }
 
     const newTopicInput = document.getElementById("new-topic") as HTMLInputElement;
+    const newTextInput = newThreadForm.querySelector("input[name='text']") as HTMLInputElement;
+    newThreadForm.before(makeToolbar(newTextInput));
     newThreadForm.addEventListener("submit", async (e) => {
       e.preventDefault();
       const input = newThreadForm.querySelector("input[name='text']") as HTMLInputElement;

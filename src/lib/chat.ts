@@ -13,7 +13,7 @@ export type Message = {
   topic: string | null; // optional chapter/topic, only on thread roots
 };
 
-export const MAX_MESSAGE_CHARS = 280;
+export const MAX_MESSAGE_CHARS = 1000;
 export const MAX_TOPIC_CHARS = 60;
 export const ALLOWED_REACTIONS = ["👍", "❤️", "😂", "🔥", "🎉", "🤯", "👀", "📚"] as const;
 

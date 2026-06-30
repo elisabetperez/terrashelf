@@ -215,6 +215,15 @@ main { padding: 2rem 0 4rem; }
 .mention-pop button:hover { background: var(--surface-2); }
 .mention-pop .handle { color: var(--muted); font-size: 0.78rem; }
 
+/* ---- Comment editor + rich content ---- */
+.editor-bar { display: flex; gap: 0.3rem; margin: 0.5rem 0 0.3rem; }
+.editor-bar button { font: inherit; font-size: 0.8rem; line-height: 1; border: 1px solid var(--line); background: var(--surface); border-radius: 6px; padding: 0.25rem 0.5rem; cursor: pointer; color: var(--ink); }
+.editor-bar button:hover { border-color: var(--accent); }
+.msg__text a { color: var(--accent-dark); text-decoration: underline; word-break: break-word; }
+.msg-img { max-width: 260px; max-height: 260px; border-radius: 8px; display: block; margin-top: 0.4rem; border: 1px solid var(--line); }
+.spoiler { background: var(--ink); color: var(--ink); border-radius: 4px; padding: 0 5px; cursor: pointer; transition: background 0.15s, color 0.15s; }
+.spoiler.is-open { background: var(--surface-2); color: var(--ink); cursor: auto; }
+
 /* ---- Forms ---- */
 input[type="text"], input[type="search"], input[type="url"], textarea {
   font: inherit; padding: 0.55rem 0.75rem; border: 1px solid var(--line);
@@ -275,6 +284,7 @@ input[type="month"], input[type="date"], select { font: inherit; padding: 0.5rem
 .member__head { display: flex; align-items: center; gap: 0.75rem; }
 .member__name { font-family: var(--font); font-size: 1.2rem; font-weight: 600; line-height: 1.1; }
 .member__email { color: var(--muted); font-size: 0.85rem; word-break: break-all; }
+.member__bio { color: var(--muted); margin: 0; font-size: 14px; }
 .member__top { display: flex; gap: 0.7rem; margin-top: 0.25rem; }
 .member__book { width: 80px; display: flex; flex-direction: column; gap: 0.3rem; }
 .member__book img, .member__book .result__ph { width: 80px; height: 120px; border-radius: 6px; object-fit: cover; background: var(--surface-2); border: 1px solid var(--line); }

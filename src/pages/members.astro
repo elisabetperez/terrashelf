@@ -47,7 +47,7 @@ function initials(name: string): string {
                 <div class="member__email">{p.email}</div>
               </div>
             </div>
-            {p.bio && <p class="muted" style="margin:0">{p.bio}</p>}
+            {p.bio && <p class="member__bio">{p.bio}</p>}
             {p.goodreadsUrl && (
               <a class="goodreads" href={p.goodreadsUrl} target="_blank" rel="noopener noreferrer" style={`color:${accent}`}>Goodreads ↗</a>
             )}
