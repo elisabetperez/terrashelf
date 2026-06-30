@@ -8,7 +8,7 @@ const admin = isAdmin(session?.email);
 
 <Layout title="TerraShelf — Suggestions" session={session} isAdmin={admin} active="suggestions">
   <h1 class="page-title">Suggestion box</h1>
-  <p class="page-sub">A shared pool of ideas for future reads — not tied to any one period. The admin picks candidates from here when setting up a period. Mark the ones you're interested in.</p>
+  <p class="page-sub">A shared pool of ideas for future reads — not tied to any one period. <strong>Upvote</strong> the ones you want to read; the most-voted rise to the top and help the admin pick candidates.</p>
 
   <div class="card" style="padding:1rem;margin-bottom:1.5rem">
     <label for="q">Search a book to add</label>
@@ -112,7 +112,10 @@ const admin = isAdmin(session?.email);
       listEl.innerHTML = `<div class="empty card"><h2>No suggestions yet</h2><p>Be the first to add a book above.</p></div>`;
       return;
     }
-    for (const s of suggestions) {
+    const ordered = [...suggestions].sort(
+      (a, b) => b.interested.length - a.interested.length || b.createdAt.localeCompare(a.createdAt)
+    );
+    for (const s of ordered) {
       const card = document.createElement("div");
       card.className = "card book";
       const mine = s.interested.includes(me);
@@ -124,7 +127,7 @@ const admin = isAdmin(session?.email);
           <div class="book__meta">suggested by <span class="js-by"></span></div>
           <p class="book__note js-note" hidden></p>
           <div class="row" style="margin-top:0.6rem">
-            <button class="pill js-interest ${mine ? "is-on" : ""}">★ Interested · <span class="js-icount">${s.interested.length}</span></button>
+            <button class="pill js-interest ${mine ? "is-on" : ""}">▲ Upvote · <span class="js-icount">${s.interested.length}</span></button>
             ${(s.suggestedBy === me || isAdmin) ? `<button class="btn btn--ghost btn--sm js-del">Remove</button>` : ""}
           </div>
         </div>`;
