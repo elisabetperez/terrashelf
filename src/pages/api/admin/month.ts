@@ -11,6 +11,7 @@ import {
   removeCandidate,
   openVoting,
   closeMonth,
+  archiveMonth,
   deleteMonth,
   setSchedule,
   type Month,
@@ -19,7 +20,7 @@ import { deleteMembers } from "@/lib/membership";
 import { deleteAllMessages } from "@/lib/chat";
 
 type Body = {
-  action: "create" | "addCandidate" | "removeCandidate" | "openVoting" | "close" | "reset" | "setSchedule";
+  action: "create" | "addCandidate" | "removeCandidate" | "openVoting" | "close" | "archive" | "reset" | "setSchedule";
   id?: string; // period id (for existing periods)
   month?: string; // YYYY-MM (for creating a new period)
   ref?: Partial<BookRef>;
@@ -85,6 +86,9 @@ export const POST: APIRoute = async ({ request, cookies }) => {
         break;
       case "close":
         updated = closeMonth(month, now, body.winnerBookId);
+        break;
+      case "archive":
+        updated = archiveMonth(month, now);
         break;
       case "setSchedule":
         updated = setSchedule(month, { label: body.label, startDate: body.startDate, endDate: body.endDate });

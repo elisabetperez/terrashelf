@@ -1,7 +1,7 @@
 ---
 import Layout from "@/components/Layout.astro";
 import { getSession, isAdmin } from "@/lib/session";
-import { listMonths, currentMonthId, userVote, tally, winnerBook, pickActive, displayLabel, scheduleText, monthName } from "@/lib/months";
+import { listMonths, currentMonthId, userVote, tally, winnerBook, pickActive, displayLabel, scheduleText, monthName, isUpcoming } from "@/lib/months";
 import { getMembers } from "@/lib/membership";
 import { listProfiles, readerCards } from "@/lib/profiles";
 
@@ -21,10 +21,17 @@ const members = month && month.phase === "closed" ? await getMembers(monthId) : 
 const readers = members.length ? await readerCards(members) : [];
 const joined = email ? members.includes(email) : false;
 
-// History of past books of the month (closed, excluding the active one).
+const today = new Date().toISOString().slice(0, 10);
+
+// Past books of the month: anything with a chosen book that isn't the active reading.
 const history = allMonths
-  .filter((m) => m.phase === "closed" && m.id !== monthId && winnerBook(m))
+  .filter((m) => winnerBook(m) && m.id !== monthId)
   .map((m) => ({ id: m.id, label: displayLabel(m), book: winnerBook(m)! }));
+
+// Upcoming: future-dated periods that aren't the active one and aren't finished.
+const upcoming = allMonths
+  .filter((m) => m.phase !== "archived" && m.id !== monthId && isUpcoming(m, today))
+  .map((m) => ({ id: m.id, label: displayLabel(m), phase: m.phase, dates: scheduleText(m) }));
 
 // Club members for the sidebar.
 const profiles = session ? await listProfiles() : [];
@@ -106,6 +113,24 @@ function initials(name: string): string {
           )}
           <span id="page-month" data-month={monthId} hidden></span>
         </>
+      )}
+
+      {upcoming.length > 0 && (
+        <section>
+          <h2 class="page-title" style="font-size:1.4rem;margin-top:2rem">Upcoming <span class="badge badge--upcoming">soon</span></h2>
+          <div class="stack">
+            {upcoming.map((u) => (
+              <div class="card book history__item">
+                <span class="book__cover">🗓️</span>
+                <div style="flex:1">
+                  <div class="book__title">{u.label}</div>
+                  <div class="book__author">{u.phase === "voting" ? "Voting soon" : "Being prepared"}{u.dates ? ` · ${u.dates}` : ""}</div>
+                </div>
+                <span class="badge badge--upcoming">upcoming</span>
+              </div>
+            ))}
+          </div>
+        </section>
       )}
 
       <section class="history-section">

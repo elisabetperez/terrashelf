@@ -16,6 +16,8 @@ import {
   monthName,
   newPeriodId,
   isValidPeriodId,
+  archiveMonth,
+  isUpcoming,
   type Month,
 } from "@/lib/months";
 import type { BookRef } from "@/lib/books";
@@ -141,6 +143,28 @@ describe("schedule & labels", () => {
   it("rejects a malformed date and an inverted range", () => {
     expect(() => setSchedule(createMonth("2026-06", "2026-06"), { startDate: "15-06-2026" })).toThrow(/YYYY-MM-DD/);
     expect(() => setSchedule(createMonth("2026-06", "2026-06"), { startDate: "2026-07-01", endDate: "2026-06-01" })).toThrow(/on or before/);
+  });
+});
+
+describe("archiveMonth", () => {
+  it("moves a chosen reading to archived", () => {
+    let m = castVote(votingMonth(), "A", "u1@terrahq.com");
+    m = closeMonth(m, NOW);
+    const archived = archiveMonth(m, NOW);
+    expect(archived.phase).toBe("archived");
+    expect(archived.archivedAt).toBe(NOW);
+  });
+  it("refuses to archive before a book is chosen", () => {
+    expect(() => archiveMonth(votingMonth(), NOW)).toThrow(/chosen book/);
+  });
+});
+
+describe("isUpcoming", () => {
+  it("is upcoming when the start is after today", () => {
+    expect(isUpcoming({ startDate: null, month: "2026-08" }, "2026-06-30")).toBe(true);
+    expect(isUpcoming({ startDate: null, month: "2026-06" }, "2026-06-30")).toBe(false);
+    expect(isUpcoming({ startDate: "2026-07-15", month: "2026-07" }, "2026-06-30")).toBe(true);
+    expect(isUpcoming({ startDate: "2026-06-10", month: "2026-06" }, "2026-06-30")).toBe(false);
   });
 });
 

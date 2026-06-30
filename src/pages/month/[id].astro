@@ -102,6 +102,7 @@ function initials(name: string): string {
     let isAdmin = false;
     let allowed: string[] = [];
     let lastSig = "";
+    let lastMutation = 0; // client time of the last local write; drops stale in-flight polls
     let currentMessages: Msg[] = [];
     let topicFilter = "";
     const topicFilterEl = document.getElementById("topic-filter") as HTMLSelectElement;
@@ -279,22 +280,28 @@ function initials(name: string): string {
     }
 
     async function load() {
+      const issuedAt = Date.now();
       try {
         const r = await fetch(`/api/chat?month=${encodeURIComponent(month)}`);
-        if (r.ok) applyData(await r.json());
+        if (!r.ok) return;
+        const data = await r.json();
+        // Drop a poll that was already in flight when a local write happened —
+        // it may carry stale data and would make the new message flicker away.
+        if (issuedAt < lastMutation) return;
+        applyData(data);
       } catch {}
     }
     async function post(text: string, parentId: string | null, topic: string | null = null) {
       const r = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ month, text, parentId, topic }) });
-      if (r.ok) { lastSig = ""; applyData(await r.json()); }
+      if (r.ok) { lastMutation = Date.now(); lastSig = ""; applyData(await r.json()); }
     }
     async function remove(id: string) {
       const r = await fetch(`/api/chat?month=${encodeURIComponent(month)}&id=${encodeURIComponent(id)}`, { method: "DELETE" });
-      if (r.ok) { lastSig = ""; applyData(await r.json()); }
+      if (r.ok) { lastMutation = Date.now(); lastSig = ""; applyData(await r.json()); }
     }
     async function react(id: string, emoji: string) {
       const r = await fetch("/api/chat/react", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ month, id, emoji }) });
-      if (r.ok) { lastSig = ""; applyData(await r.json()); }
+      if (r.ok) { lastMutation = Date.now(); lastSig = ""; applyData(await r.json()); }
     }
 
     const newTopicInput = document.getElementById("new-topic") as HTMLInputElement;

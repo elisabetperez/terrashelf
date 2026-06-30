@@ -2,7 +2,8 @@ import type { BookRef } from "@/lib/books";
 import { readJSON, writeJSON, listKeys, deleteJSON } from "@/lib/blobs";
 import { randomBytes } from "node:crypto";
 
-export type Phase = "draft" | "voting" | "closed";
+// draft → voting → closed (the current "book of the month" being read) → archived (finished, in Past)
+export type Phase = "draft" | "voting" | "closed" | "archived";
 
 export type Month = {
   id: string; // unique period id / storage key, e.g. "2026-07" or "2026-07-2"
@@ -13,6 +14,7 @@ export type Month = {
   winnerBookId: string | null;
   openedAt: string | null;
   closedAt: string | null;
+  archivedAt: string | null; // when the admin closed the reading (moved to Past)
   label: string | null; // optional custom name, e.g. "Summer read"
   startDate: string | null; // optional YYYY-MM-DD reading-period start (need not be day 1)
   endDate: string | null; // optional YYYY-MM-DD reading-period end
@@ -63,10 +65,23 @@ export function createMonth(id: string, month: string): Month {
     winnerBookId: null,
     openedAt: null,
     closedAt: null,
+    archivedAt: null,
     label: null,
     startDate: null,
     endDate: null,
   };
+}
+
+/** Close (finish) a reading and move it to Past. Only a chosen book can be archived. */
+export function archiveMonth(month: Month, now: string): Month {
+  if (month.phase !== "closed") throw new Error("Only the current reading (with a chosen book) can be closed");
+  return { ...month, phase: "archived", archivedAt: now };
+}
+
+/** True if the period's start (startDate, else the 1st of its month) is after today (YYYY-MM-DD). */
+export function isUpcoming(p: Pick<Month, "startDate" | "month">, today: string): boolean {
+  const start = p.startDate ?? `${p.month}-01`;
+  return start > today;
 }
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -223,6 +238,7 @@ function normalizeMonth(raw: Month | null): Month | null {
   return {
     ...raw,
     month: raw.month ?? (isValidMonthId(raw.id) ? raw.id : raw.id.slice(0, 7)),
+    archivedAt: raw.archivedAt ?? null,
     label: raw.label ?? null,
     startDate: raw.startDate ?? null,
     endDate: raw.endDate ?? null,

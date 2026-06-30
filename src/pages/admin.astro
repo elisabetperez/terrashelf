@@ -10,10 +10,12 @@ import {
   displayLabel,
   scheduleText,
   pickActive,
+  isUpcoming,
 } from "@/lib/months";
 
 const session = getSession(Astro.cookies);
 const admin = isAdmin(session?.email);
+const today = new Date().toISOString().slice(0, 10);
 
 const allMonths = admin ? await listMonths() : [];
 const active = pickActive(allMonths);
@@ -43,7 +45,8 @@ const defaultNew = currentMonthId(new Date());
             <div class="stack" style="margin-top:0.6rem">
               {allMonths.map((m) => (
                 <a class={`period-row ${m.id === managedId ? "is-managed" : ""}`} href={`/admin?period=${m.id}`}>
-                  <span class={`badge badge--${m.phase}`}>{m.phase}</span>
+                  <span class={`badge badge--${m.phase}`}>{m.phase === "closed" ? "reading" : m.phase}</span>
+                  {m.phase !== "archived" && isUpcoming(m, today) && <span class="badge badge--upcoming">upcoming</span>}
                   <strong style="flex:1">{displayLabel(m)}</strong>
                   {scheduleText(m) && <span class="muted">{scheduleText(m)}</span>}
                   <span class="muted">
@@ -135,9 +138,14 @@ const defaultNew = currentMonthId(new Date());
                 </div>
                 <button class="btn" data-action="close">Close voting & crown the winner</button>
               </div>
+            ) : month.phase === "closed" ? (
+              <div class="card" style="padding:1.25rem">
+                <p>This is the current reading. Members can join and chat in the <a href={`/month/${managedId}`}>discussion</a>.</p>
+                <button class="btn btn--muted" data-action="archive" style="margin-top:0.75rem">Close this reading (move to Past)</button>
+              </div>
             ) : (
               <div class="card" style="padding:1.25rem">
-                <p>Voting is closed. The book of the month is set — see the <a href={`/month/${managedId}`}>discussion</a>.</p>
+                <p>This reading is closed and now lives in <strong>Past books of the month</strong>. The <a href={`/month/${managedId}`}>discussion</a> stays open.</p>
               </div>
             )}
 
