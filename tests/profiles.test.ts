@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { applyProfileInput, emptyProfile, nameFromEmail, MAX_TOP_BOOKS, MAX_BIO_CHARS } from "@/lib/profiles";
+import { applyProfileInput, emptyProfile, nameFromEmail, accentForEmail, ACCENT_VARS, MAX_TOP_BOOKS, MAX_BIO_CHARS } from "@/lib/profiles";
 import type { BookRef } from "@/lib/books";
 
 const NOW = "2026-06-30T00:00:00Z";
@@ -43,5 +43,29 @@ describe("applyProfileInput", () => {
   it("falls back to a name derived from email when display name is blank", () => {
     const p = applyProfileInput(base, { displayName: "  " }, NOW);
     expect(p.displayName).toBe("Eli");
+  });
+
+  it("accepts a data-URL photo and an http(s) photo", () => {
+    const data = applyProfileInput(base, { avatarUrl: "data:image/png;base64,AAAA" }, NOW);
+    expect(data.avatarUrl).toBe("data:image/png;base64,AAAA");
+    const http = applyProfileInput(base, { avatarUrl: "https://example.com/me.jpg" }, NOW);
+    expect(http.avatarUrl).toBe("https://example.com/me.jpg");
+  });
+
+  it("rejects a non-image photo string", () => {
+    expect(() => applyProfileInput(base, { avatarUrl: "not-a-url" }, NOW)).toThrow(/Photo/);
+  });
+
+  it("allows clearing the photo", () => {
+    const p = applyProfileInput({ ...base, avatarUrl: "https://example.com/x.png" }, { avatarUrl: "" }, NOW);
+    expect(p.avatarUrl).toBe("");
+  });
+});
+
+describe("accentForEmail", () => {
+  it("returns one of the accent vars and is stable", () => {
+    const a = accentForEmail("eli@terrahq.com");
+    expect(ACCENT_VARS).toContain(a);
+    expect(accentForEmail("eli@terrahq.com")).toBe(a);
   });
 });

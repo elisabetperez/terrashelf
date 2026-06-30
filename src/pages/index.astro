@@ -25,7 +25,7 @@ const monthLabel = new Date(monthId + "-01T00:00:00Z").toLocaleDateString("en-US
 ---
 
 <Layout title="TerraShelf — This month" session={session} isAdmin={admin} active="home">
-  <p class="section-label">{monthLabel}</p>
+  <p><span class="month-pill">{monthLabel}</span></p>
 
   {!month || month.phase === "draft" ? (
     <div class="empty card">

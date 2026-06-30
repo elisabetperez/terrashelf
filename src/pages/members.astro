@@ -1,11 +1,20 @@
 ---
 import Layout from "@/components/Layout.astro";
 import { getSession, isAdmin } from "@/lib/session";
-import { listProfiles } from "@/lib/profiles";
+import { listProfiles, accentForEmail } from "@/lib/profiles";
 
 const session = getSession(Astro.cookies);
 const admin = isAdmin(session?.email);
 const profiles = session ? await listProfiles() : [];
+
+function initials(name: string): string {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((p) => p[0]?.toUpperCase() ?? "")
+    .join("");
+}
 ---
 
 <Layout title="TerraShelf — Members" session={session} isAdmin={admin} active="members">
@@ -18,27 +27,46 @@ const profiles = session ? await listProfiles() : [];
       <p>Be the first — set up <a href="/profile">your profile</a>.</p>
     </div>
   ) : (
-    <div class="grid grid--cards">
-      {profiles.map((p) => (
-        <div class="card member">
-          <div class="member__name">{p.displayName}</div>
-          <div class="member__email">{p.email}</div>
-          {p.bio && <p class="muted" style="margin:0">{p.bio}</p>}
-          {p.goodreadsUrl && (
-            <a class="goodreads" href={p.goodreadsUrl} target="_blank" rel="noopener noreferrer">Goodreads ↗</a>
-          )}
-          {p.topBooks.length > 0 && (
-            <>
-              <div class="section-label">Top {p.topBooks.length}</div>
-              <div class="member__top">
-                {p.topBooks.map((b) =>
-                  b.coverUrl ? <img src={b.coverUrl} alt={b.title} title={`${b.title} — ${b.author}`} /> : <span class="result__ph" title={b.title}></span>
-                )}
+    <div class="grid grid--members">
+      {profiles.map((p) => {
+        const isAdminMember = isAdmin(p.email);
+        const accent = isAdminMember ? "var(--pink)" : accentForEmail(p.email);
+        return (
+          <div class="card member" style={`border-top-color:${accent}`}>
+            <div class="member__head">
+              {p.avatarUrl ? (
+                <img class="avatar" src={p.avatarUrl} alt={p.displayName} />
+              ) : (
+                <span class="avatar avatar--ph" style={`background:${accent}`}>{initials(p.displayName)}</span>
+              )}
+              <div>
+                <div class="member__name">
+                  {p.displayName}
+                  {isAdminMember && <span class="badge badge--admin">Admin</span>}
+                </div>
+                <div class="member__email">{p.email}</div>
               </div>
-            </>
-          )}
-        </div>
-      ))}
+            </div>
+            {p.bio && <p class="muted" style="margin:0">{p.bio}</p>}
+            {p.goodreadsUrl && (
+              <a class="goodreads" href={p.goodreadsUrl} target="_blank" rel="noopener noreferrer">Goodreads ↗</a>
+            )}
+            {p.topBooks.length > 0 && (
+              <>
+                <div class="section-label">Top {p.topBooks.length}</div>
+                <div class="member__top">
+                  {p.topBooks.map((b) => (
+                    <div class="member__book">
+                      {b.coverUrl ? <img src={b.coverUrl} alt={b.title} /> : <span class="result__ph"></span>}
+                      <span class="member__book-title" title={`${b.title}${b.author ? " — " + b.author : ""}`}>{b.title}</span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        );
+      })}
     </div>
   )}
 </Layout>

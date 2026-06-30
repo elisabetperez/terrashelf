@@ -6,12 +6,14 @@ export type Profile = {
   displayName: string;
   goodreadsUrl: string; // "" when unset
   bio: string;
+  avatarUrl: string; // "" when unset; a data: URL or http(s) URL
   topBooks: BookRef[]; // up to 3
   updatedAt: string; // ISO
 };
 
 export const MAX_TOP_BOOKS = 3;
 export const MAX_BIO_CHARS = 280;
+export const MAX_AVATAR_CHARS = 400_000; // ~300KB data URL ceiling
 
 const STORE = "profiles";
 
@@ -19,8 +21,32 @@ export type ProfileInput = {
   displayName?: string;
   goodreadsUrl?: string;
   bio?: string;
+  avatarUrl?: string;
   topBooks?: BookRef[];
 };
+
+/** Accent colors (CSS custom properties) used to tint member cards. */
+export const ACCENT_VARS = [
+  "var(--pink)",
+  "var(--orange)",
+  "var(--blue)",
+  "var(--green)",
+  "var(--coral)",
+  "var(--lime)",
+  "var(--gold)",
+] as const;
+
+/** Stable pseudo-random accent for any key — looks scattered, never flickers. */
+export function accentForKey(seed: string): string {
+  let h = 0;
+  for (const ch of seed) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return ACCENT_VARS[h % ACCENT_VARS.length];
+}
+
+/** Stable accent for a member, keyed by email. */
+export function accentForEmail(email: string): string {
+  return accentForKey(email);
+}
 
 // ---- Pure logic (unit-tested) ----
 
@@ -31,6 +57,7 @@ export function emptyProfile(email: string, now: string): Profile {
     displayName: nameFromEmail(email),
     goodreadsUrl: "",
     bio: "",
+    avatarUrl: "",
     topBooks: [],
     updatedAt: now,
   };
@@ -55,6 +82,12 @@ function validGoodreadsUrl(url: string): boolean {
   }
 }
 
+function validAvatar(url: string): boolean {
+  if (!url) return true; // optional
+  if (url.length > MAX_AVATAR_CHARS) return false;
+  return /^data:image\/(png|jpe?g|webp|gif);base64,/.test(url) || /^https?:\/\//.test(url);
+}
+
 /** Apply user-supplied input to a profile, validating and clamping. */
 export function applyProfileInput(current: Profile, input: ProfileInput, now: string): Profile {
   const goodreadsUrl = (input.goodreadsUrl ?? current.goodreadsUrl).trim();
@@ -65,9 +98,13 @@ export function applyProfileInput(current: Profile, input: ProfileInput, now: st
   if (bio.length > MAX_BIO_CHARS) {
     throw new Error(`Bio exceeds ${MAX_BIO_CHARS} characters`);
   }
+  const avatarUrl = (input.avatarUrl ?? current.avatarUrl).trim();
+  if (!validAvatar(avatarUrl)) {
+    throw new Error("Photo must be an image (under ~300KB)");
+  }
   const displayName = (input.displayName ?? current.displayName).trim() || nameFromEmail(current.email);
   const topBooks = (input.topBooks ?? current.topBooks).slice(0, MAX_TOP_BOOKS);
-  return { ...current, displayName, goodreadsUrl, bio, topBooks, updatedAt: now };
+  return { ...current, displayName, goodreadsUrl, bio, avatarUrl, topBooks, updatedAt: now };
 }
 
 // ---- Persistence ----
