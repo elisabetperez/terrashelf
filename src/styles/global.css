@@ -219,6 +219,12 @@ label { font-weight: 600; font-size: 0.9rem; display: block; margin-bottom: 0.3r
 .badge--draft { background: var(--surface-2); color: var(--muted); }
 .badge--admin { background: rgba(236, 90, 168, 0.15); color: var(--pink-dark); margin-left: 0.4rem; vertical-align: middle; }
 
+/* ---- Admin period rows ---- */
+.period-row { display: flex; align-items: center; gap: 0.75rem; padding: 0.6rem 0.8rem; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); text-decoration: none; color: inherit; flex-wrap: wrap; }
+.period-row:hover { border-color: var(--accent); text-decoration: none; }
+.period-row.is-managed { border-color: var(--accent); background: rgba(236, 90, 168, 0.05); }
+input[type="month"], input[type="date"], select { font: inherit; padding: 0.5rem 0.6rem; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); }
+
 /* ---- Empty state ---- */
 .empty { text-align: center; padding: 3rem 1rem; color: var(--muted); }
 .empty h2 { color: var(--ink); margin-bottom: 0.5rem; }

@@ -9,6 +9,11 @@ import {
   tally,
   userVote,
   currentMonthId,
+  setSchedule,
+  displayLabel,
+  scheduleText,
+  pickActive,
+  monthName,
   type Month,
 } from "@/lib/months";
 import type { BookRef } from "@/lib/books";
@@ -113,5 +118,36 @@ describe("closeMonth", () => {
 
   it("refuses to close with no votes", () => {
     expect(() => closeMonth(votingMonth(), NOW)).toThrow(/no votes/);
+  });
+});
+
+describe("schedule & labels", () => {
+  it("sets a custom label and reading-period dates not tied to day 1", () => {
+    const m = setSchedule(createMonth("2026-06"), { label: "Summer read", startDate: "2026-06-15", endDate: "2026-07-15" });
+    expect(m.label).toBe("Summer read");
+    expect(m.startDate).toBe("2026-06-15");
+    expect(displayLabel(m)).toBe("Summer read");
+    expect(scheduleText(m)).toBe("Jun 15 – Jul 15");
+  });
+
+  it("falls back to the month name when no label is set", () => {
+    expect(displayLabel(createMonth("2026-06"))).toBe(monthName("2026-06"));
+    expect(monthName("2026-06")).toBe("June 2026");
+    expect(scheduleText(createMonth("2026-06"))).toBeNull();
+  });
+
+  it("rejects a malformed date and an inverted range", () => {
+    expect(() => setSchedule(createMonth("2026-06"), { startDate: "15-06-2026" })).toThrow(/YYYY-MM-DD/);
+    expect(() => setSchedule(createMonth("2026-06"), { startDate: "2026-07-01", endDate: "2026-06-01" })).toThrow(/on or before/);
+  });
+});
+
+describe("pickActive", () => {
+  const m = (id: string, phase: Month["phase"]): Month => ({ ...createMonth(id), phase });
+  it("prefers voting, then most recent closed, then draft", () => {
+    expect(pickActive([m("2026-05", "closed"), m("2026-06", "voting")])?.id).toBe("2026-06");
+    expect(pickActive([m("2026-05", "closed"), m("2026-06", "closed")])?.id).toBe("2026-06");
+    expect(pickActive([m("2026-06", "draft")])?.id).toBe("2026-06");
+    expect(pickActive([])).toBeNull();
   });
 });

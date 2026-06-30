@@ -10,17 +10,21 @@ import {
   openVoting,
   closeMonth,
   deleteMonth,
+  setSchedule,
   type Month,
 } from "@/lib/months";
 import { deleteMembers } from "@/lib/membership";
 import { deleteAllMessages } from "@/lib/chat";
 
 type Body = {
-  action: "create" | "addCandidate" | "removeCandidate" | "openVoting" | "close" | "reset";
+  action: "create" | "addCandidate" | "removeCandidate" | "openVoting" | "close" | "reset" | "setSchedule";
   id?: string;
   ref?: Partial<BookRef>;
   bookId?: string;
   winnerBookId?: string;
+  label?: string;
+  startDate?: string;
+  endDate?: string;
 };
 
 export const POST: APIRoute = async ({ request, cookies }) => {
@@ -35,7 +39,10 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     if (body.action === "create") {
       if (!body.id) return json({ error: "Missing month id" }, 400);
       const existing = await getMonth(body.id);
-      const month = existing ?? createMonth(body.id);
+      let month = existing ?? createMonth(body.id);
+      if (body.label !== undefined || body.startDate !== undefined || body.endDate !== undefined) {
+        month = setSchedule(month, { label: body.label, startDate: body.startDate, endDate: body.endDate });
+      }
       await saveMonth(month);
       return json({ month });
     }
@@ -74,6 +81,9 @@ export const POST: APIRoute = async ({ request, cookies }) => {
         break;
       case "close":
         updated = closeMonth(month, now, body.winnerBookId);
+        break;
+      case "setSchedule":
+        updated = setSchedule(month, { label: body.label, startDate: body.startDate, endDate: body.endDate });
         break;
       default:
         return json({ error: "Unknown action" }, 400);

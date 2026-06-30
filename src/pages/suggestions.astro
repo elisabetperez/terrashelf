@@ -28,6 +28,9 @@ const admin = isAdmin(session?.email);
   const listEl = document.getElementById("suggestions")!;
   let me = "";
   let isAdmin = false;
+  // Serialize adds: the suggestions list is one blob, so two overlapping
+  // read-modify-write POSTs would clobber each other (last write wins).
+  let addChain: Promise<void> = Promise.resolve();
 
   const nameOnly = (email: string) => (email.includes("@") ? email.slice(0, email.indexOf("@")) : email);
 
@@ -66,21 +69,30 @@ const admin = isAdmin(session?.email);
     }
   }
 
-  async function addSuggestion(b: BookRef, btn: HTMLButtonElement) {
+  function addSuggestion(b: BookRef, btn: HTMLButtonElement) {
     btn.disabled = true;
-    const r = await fetch("/api/suggestions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ olKey: b.olKey, title: b.title, author: b.author, coverUrl: b.coverUrl }),
+    btn.textContent = "Adding…";
+    // Queue behind any in-flight add so writes don't race.
+    addChain = addChain.then(async () => {
+      try {
+        const r = await fetch("/api/suggestions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ olKey: b.olKey, title: b.title, author: b.author, coverUrl: b.coverUrl }),
+        });
+        const data = await r.json();
+        if (r.ok) {
+          applyData(data);
+          btn.textContent = "Added ✓";
+        } else {
+          btn.textContent = data.error ?? "Error";
+          setTimeout(() => { btn.disabled = false; btn.textContent = "Add"; }, 1500);
+        }
+      } catch {
+        btn.textContent = "Error";
+        setTimeout(() => { btn.disabled = false; btn.textContent = "Add"; }, 1500);
+      }
     });
-    const data = await r.json();
-    if (r.ok) {
-      applyData(data);
-      btn.textContent = "Added ✓";
-    } else {
-      btn.textContent = data.error ?? "Error";
-      setTimeout(() => { btn.disabled = false; btn.textContent = "Add"; }, 1500);
-    }
   }
 
   function applyData(data: { suggestions: Suggestion[]; me: string; isAdmin: boolean }) {

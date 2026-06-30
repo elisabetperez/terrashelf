@@ -4,13 +4,16 @@ import { readJSON, writeJSON, listKeys, deleteJSON } from "@/lib/blobs";
 export type Phase = "draft" | "voting" | "closed";
 
 export type Month = {
-  id: string; // "2026-07"
+  id: string; // "2026-07" — the storage key / identity
   phase: Phase;
   candidates: BookRef[];
   votes: Record<string, string[]>; // bookId -> emails
   winnerBookId: string | null;
   openedAt: string | null;
   closedAt: string | null;
+  label: string | null; // optional custom name, e.g. "Summer read"
+  startDate: string | null; // optional YYYY-MM-DD reading-period start (need not be day 1)
+  endDate: string | null; // optional YYYY-MM-DD reading-period end
 };
 
 const STORE = "months";
@@ -31,7 +34,81 @@ export function isValidMonthId(id: string): boolean {
 
 export function createMonth(id: string): Month {
   if (!isValidMonthId(id)) throw new Error("Invalid month id (expected YYYY-MM)");
-  return { id, phase: "draft", candidates: [], votes: {}, winnerBookId: null, openedAt: null, closedAt: null };
+  return {
+    id,
+    phase: "draft",
+    candidates: [],
+    votes: {},
+    winnerBookId: null,
+    openedAt: null,
+    closedAt: null,
+    label: null,
+    startDate: null,
+    endDate: null,
+  };
+}
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Update the optional label and reading-period dates. Undefined leaves a field unchanged. */
+export function setSchedule(
+  month: Month,
+  input: { label?: string; startDate?: string; endDate?: string }
+): Month {
+  const norm = (d?: string) => {
+    if (d === undefined) return undefined;
+    const t = d.trim();
+    if (!t) return null;
+    if (!DATE_RE.test(t)) throw new Error("Dates must be YYYY-MM-DD");
+    return t;
+  };
+  const startDate = norm(input.startDate);
+  const endDate = norm(input.endDate);
+  if (startDate && endDate && startDate > endDate) {
+    throw new Error("Start date must be on or before the end date");
+  }
+  return {
+    ...month,
+    label: input.label !== undefined ? input.label.trim() || null : month.label,
+    startDate: startDate !== undefined ? startDate : month.startDate,
+    endDate: endDate !== undefined ? endDate : month.endDate,
+  };
+}
+
+/** Human month name from an id, e.g. "June 2026". */
+export function monthName(id: string): string {
+  if (!isValidMonthId(id)) return id;
+  return new Date(id + "-01T00:00:00Z").toLocaleDateString("en-US", {
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
+
+/** Display label: the custom label if set, otherwise the month name. */
+export function displayLabel(month: Pick<Month, "id" | "label">): string {
+  return month.label || monthName(month.id);
+}
+
+/** A short "Jun 15 – Jul 15" reading-period string, or null when no dates are set. */
+export function scheduleText(month: Pick<Month, "startDate" | "endDate">): string | null {
+  if (!month.startDate && !month.endDate) return null;
+  const f = (d: string) =>
+    new Date(d + "T00:00:00Z").toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+  if (month.startDate && month.endDate) return `${f(month.startDate)} – ${f(month.endDate)}`;
+  if (month.startDate) return `from ${f(month.startDate)}`;
+  return `until ${f(month.endDate!)}`;
+}
+
+/**
+ * The "active" period for the home page, by status rather than the calendar:
+ * a month in voting wins; otherwise the most recent closed; otherwise the most
+ * recent draft. Recency is by startDate when set, else by id.
+ */
+export function pickActive(months: Month[]): Month | null {
+  const order = (a: Month, b: Month) => (b.startDate ?? b.id).localeCompare(a.startDate ?? a.id);
+  const inPhase = (p: Phase) => months.filter((m) => m.phase === p).sort(order);
+  return inPhase("voting")[0] ?? inPhase("closed")[0] ?? inPhase("draft")[0] ?? null;
 }
 
 export function addCandidate(month: Month, ref: BookRef): Month {

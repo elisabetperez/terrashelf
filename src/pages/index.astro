@@ -1,7 +1,7 @@
 ---
 import Layout from "@/components/Layout.astro";
 import { getSession, isAdmin } from "@/lib/session";
-import { getMonth, listMonths, currentMonthId, userVote, tally, winnerBook } from "@/lib/months";
+import { listMonths, currentMonthId, userVote, tally, winnerBook, pickActive, displayLabel, scheduleText, monthName } from "@/lib/months";
 import { getMembers } from "@/lib/membership";
 import { listProfiles, readerCards } from "@/lib/profiles";
 
@@ -9,8 +9,10 @@ const session = getSession(Astro.cookies);
 const email = session?.email ?? null;
 const admin = isAdmin(email);
 
-const monthId = currentMonthId(new Date());
-const month = session ? await getMonth(monthId) : null;
+// The active period is chosen by status (voting → closed → draft), not the calendar.
+const allMonths = session ? await listMonths() : [];
+const month = pickActive(allMonths);
+const monthId = month?.id ?? currentMonthId(new Date());
 const myVote = month && email ? userVote(month, email) : null;
 const counts = month ? tally(month) : {};
 const totalVotes = Object.values(counts).reduce((a, b) => a + b, 0);
@@ -19,18 +21,16 @@ const members = month && month.phase === "closed" ? await getMembers(monthId) : 
 const readers = members.length ? await readerCards(members) : [];
 const joined = email ? members.includes(email) : false;
 
-// History of past books of the month (closed, excluding the current month).
-const allMonths = session ? await listMonths() : [];
+// History of past books of the month (closed, excluding the active one).
 const history = allMonths
   .filter((m) => m.phase === "closed" && m.id !== monthId && winnerBook(m))
-  .map((m) => ({ id: m.id, book: winnerBook(m)! }));
+  .map((m) => ({ id: m.id, label: displayLabel(m), book: winnerBook(m)! }));
 
 // Club members for the sidebar.
 const profiles = session ? await listProfiles() : [];
 
-const fmtMonth = (id: string) =>
-  new Date(id + "-01T00:00:00Z").toLocaleDateString("en-US", { month: "long", year: "numeric", timeZone: "UTC" });
-const monthLabel = fmtMonth(monthId);
+const monthLabel = month ? displayLabel(month) : monthName(monthId);
+const monthDates = month ? scheduleText(month) : null;
 
 function initials(name: string): string {
   return name.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]?.toUpperCase() ?? "").join("");
@@ -40,7 +40,7 @@ function initials(name: string): string {
 <Layout title="TerraShelf — This month" session={session} isAdmin={admin} active="home">
   <div class="home">
     <div class="home__main">
-      <p><span class="month-pill">{monthLabel}</span></p>
+      <p><span class="month-pill">{monthLabel}</span>{monthDates && <span class="muted" style="margin-left:0.6rem">{monthDates}</span>}</p>
 
       {!month || month.phase === "draft" ? (
         <div class="empty card">
@@ -118,7 +118,7 @@ function initials(name: string): string {
               <a class="card book history__item" href={`/month/${h.id}`}>
                 {h.book.coverUrl ? <img class="book__cover" src={h.book.coverUrl} alt="" /> : <span class="book__cover">📖</span>}
                 <div style="flex:1">
-                  <div class="hero__kicker">{fmtMonth(h.id)}</div>
+                  <div class="hero__kicker">{h.label}</div>
                   <div class="book__title">{h.book.title}</div>
                   <div class="book__author">{h.book.author}</div>
                 </div>
