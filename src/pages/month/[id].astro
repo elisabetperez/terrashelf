@@ -3,10 +3,11 @@ import Layout from "@/components/Layout.astro";
 import { getSession, isAdmin } from "@/lib/session";
 import { getMonth, winnerBook, hasChosenBook, isValidPeriodId, displayLabel, scheduleText, monthName } from "@/lib/months";
 import { getMembers } from "@/lib/membership";
-import { listProfiles, readerCards, nameFromEmail } from "@/lib/profiles";
+import { listProfiles, readerCards, nameFromEmail, isMember } from "@/lib/profiles";
 
 const session = getSession(Astro.cookies);
 const admin = isAdmin(session?.email);
+const member = session ? await isMember(session.email) : false;
 const id = Astro.params.id ?? "";
 
 const month = session && isValidPeriodId(id) ? await getMonth(id) : null;
@@ -50,9 +51,13 @@ function initials(name: string): string {
           <h1 class="hero__title">{winner!.title}</h1>
           <div class="hero__author">{winner!.author}</div>
           <div class="hero__actions">
-            <button class="btn js-join" id="join-btn" data-joined={joined ? "1" : "0"}>
-              {joined ? "Leave this read" : "Join this read"}
-            </button>
+            {member ? (
+              <button class="btn js-join" id="join-btn" data-joined={joined ? "1" : "0"}>
+                {joined ? "Leave this read" : "Join this read"}
+              </button>
+            ) : (
+              <a class="btn btn--muted" href="/profile">Set up your profile to join →</a>
+            )}
           </div>
           <div class="readers" id="readers" style="margin-top:0.9rem">
             {readers.map((r) => (
@@ -66,7 +71,7 @@ function initials(name: string): string {
         </div>
       </div>
 
-      <div class="card" id="chat" data-month={id} data-mentionables={JSON.stringify(mentionables)} style="margin-top:1.25rem;padding:1.25rem">
+      <div class="card" id="chat" data-month={id} data-member={member ? "1" : "0"} data-mentionables={JSON.stringify(mentionables)} style="margin-top:1.25rem;padding:1.25rem">
         <div class="row" style="justify-content:space-between;align-items:center">
           <p class="section-label" style="margin:0">Discussion · newest first</p>
           <label style="display:flex;align-items:center;gap:0.4rem;margin:0;font-weight:600;font-size:0.85rem">
@@ -74,11 +79,15 @@ function initials(name: string): string {
             <select id="topic-filter"><option value="">All</option></select>
           </label>
         </div>
-        <form class="chat__form" id="new-thread" style="flex-wrap:wrap">
-          <input type="text" id="new-topic" list="topic-list" placeholder="Chapter / topic (optional)" autocomplete="off" style="flex:0 0 200px" />
-          <input type="text" name="text" maxlength="1000" placeholder="Start a thread… **bold**, ||spoiler||, links, @mention" autocomplete="off" style="flex:1;min-width:180px" />
-          <button class="btn" type="submit">Post</button>
-        </form>
+        {member ? (
+          <form class="chat__form" id="new-thread" style="flex-wrap:wrap">
+            <input type="text" id="new-topic" list="topic-list" placeholder="Chapter / topic (optional)" autocomplete="off" style="flex:0 0 200px" />
+            <input type="text" name="text" maxlength="1000" placeholder="Start a thread… **bold**, ||spoiler||, links, @mention" autocomplete="off" style="flex:1;min-width:180px" />
+            <button class="btn" type="submit">Post</button>
+          </form>
+        ) : (
+          <p class="muted" style="margin:0.6rem 0 0">Set up your <a href="/profile">profile</a> to start threads, reply and react — you can still read along.</p>
+        )}
         <datalist id="topic-list"></datalist>
         <div class="threads" id="threads"></div>
       </div>
@@ -98,6 +107,7 @@ function initials(name: string): string {
     const mentionables: Mentionable[] = JSON.parse((chat as HTMLElement).dataset.mentionables || "[]");
     const handleSet = new Set(mentionables.map((m) => m.handle));
     const nameByHandle = new Map(mentionables.map((m) => [m.handle, m.name]));
+    const canPost = (chat as HTMLElement).dataset.member === "1";
     const threadsEl = document.getElementById("threads")!;
     const newThreadForm = document.getElementById("new-thread") as HTMLFormElement;
     let me = "";
@@ -228,25 +238,28 @@ function initials(name: string): string {
         chip.title = names;
         chip.dataset.tip = names;
         chip.textContent = `${emoji} ${users.length}`;
-        chip.addEventListener("click", () => react(m.id, emoji));
+        if (canPost) chip.addEventListener("click", () => react(m.id, emoji));
+        else chip.style.cursor = "default";
         bar.append(chip);
       }
-      const add = document.createElement("span");
-      add.className = "rx-add-wrap";
-      const addBtn = document.createElement("button");
-      addBtn.className = "rx rx-add";
-      addBtn.textContent = "+";
-      const picker = document.createElement("span");
-      picker.className = "rx-picker";
-      for (const emoji of allowed) {
-        const b = document.createElement("button");
-        b.textContent = emoji;
-        b.addEventListener("click", () => { picker.classList.remove("is-open"); react(m.id, emoji); });
-        picker.append(b);
+      if (canPost) {
+        const add = document.createElement("span");
+        add.className = "rx-add-wrap";
+        const addBtn = document.createElement("button");
+        addBtn.className = "rx rx-add";
+        addBtn.textContent = "+";
+        const picker = document.createElement("span");
+        picker.className = "rx-picker";
+        for (const emoji of allowed) {
+          const b = document.createElement("button");
+          b.textContent = emoji;
+          b.addEventListener("click", () => { picker.classList.remove("is-open"); react(m.id, emoji); });
+          picker.append(b);
+        }
+        addBtn.addEventListener("click", () => picker.classList.toggle("is-open"));
+        add.append(addBtn, picker);
+        bar.append(add);
       }
-      addBtn.addEventListener("click", () => picker.classList.toggle("is-open"));
-      add.append(addBtn, picker);
-      bar.append(add);
       return bar;
     }
 
@@ -335,29 +348,31 @@ function initials(name: string): string {
         replies.forEach((rep) => repliesWrap.append(messageEl(rep, false)));
         thread.append(repliesWrap);
 
-        const replyForm = document.createElement("form");
-        replyForm.className = "chat__form chat__form--reply";
-        const input = document.createElement("input");
-        input.type = "text";
-        input.maxLength = 1000;
-        input.placeholder = "Reply… **bold**, ||spoiler||, links, @mention";
-        input.autocomplete = "off";
-        const submit = document.createElement("button");
-        submit.className = "btn btn--sm";
-        submit.type = "submit";
-        submit.textContent = "Reply";
-        replyForm.append(input, submit);
-        replyForm.addEventListener("submit", async (e) => {
-          e.preventDefault();
-          const text = input.value.trim();
-          if (!text) return;
-          submit.disabled = true;
-          await post(text, root.id);
-          input.value = "";
-          submit.disabled = false;
-        });
-        thread.append(makeToolbar(input));
-        thread.append(replyForm);
+        if (canPost) {
+          const replyForm = document.createElement("form");
+          replyForm.className = "chat__form chat__form--reply";
+          const input = document.createElement("input");
+          input.type = "text";
+          input.maxLength = 1000;
+          input.placeholder = "Reply… **bold**, ||spoiler||, links, @mention";
+          input.autocomplete = "off";
+          const submit = document.createElement("button");
+          submit.className = "btn btn--sm";
+          submit.type = "submit";
+          submit.textContent = "Reply";
+          replyForm.append(input, submit);
+          replyForm.addEventListener("submit", async (e) => {
+            e.preventDefault();
+            const text = input.value.trim();
+            if (!text) return;
+            submit.disabled = true;
+            await post(text, root.id);
+            input.value = "";
+            submit.disabled = false;
+          });
+          thread.append(makeToolbar(input));
+          thread.append(replyForm);
+        }
         threadsEl.append(thread);
       }
     }
@@ -395,21 +410,22 @@ function initials(name: string): string {
       if (r.ok) { bumpMutation(); lastSig = ""; applyData(await r.json()); }
     }
 
-    const newTopicInput = document.getElementById("new-topic") as HTMLInputElement;
-    const newTextInput = newThreadForm.querySelector("input[name='text']") as HTMLInputElement;
-    newThreadForm.before(makeToolbar(newTextInput));
-    newThreadForm.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const input = newThreadForm.querySelector("input[name='text']") as HTMLInputElement;
-      const text = input.value.trim();
-      if (!text) return;
-      const submit = newThreadForm.querySelector("button")!;
-      submit.disabled = true;
-      await post(text, null, newTopicInput.value.trim() || null);
-      input.value = "";
-      newTopicInput.value = "";
-      submit.disabled = false;
-    });
+    if (newThreadForm) {
+      const newTopicInput = document.getElementById("new-topic") as HTMLInputElement;
+      const newTextInput = newThreadForm.querySelector("input[name='text']") as HTMLInputElement;
+      newThreadForm.before(makeToolbar(newTextInput));
+      newThreadForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const text = newTextInput.value.trim();
+        if (!text) return;
+        const submit = newThreadForm.querySelector("button")!;
+        submit.disabled = true;
+        await post(text, null, newTopicInput.value.trim() || null);
+        newTextInput.value = "";
+        newTopicInput.value = "";
+        submit.disabled = false;
+      });
+    }
 
     topicFilterEl.addEventListener("change", () => {
       topicFilter = topicFilterEl.value;

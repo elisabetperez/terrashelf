@@ -9,6 +9,7 @@ export type Suggestion = BookRef & {
 };
 
 export const MAX_NOTE_CHARS = 280;
+export const MAX_UPVOTES = 2;
 
 const STORE = "suggestions";
 const KEY = "all";
@@ -40,8 +41,18 @@ export function removeSuggestion(list: Suggestion[], id: string, requester: stri
   return list.filter((s) => s.id !== id);
 }
 
-/** Toggle the requester's "interested" flag on a suggestion. */
+/** Count how many suggestions this email has upvoted. */
+export function upvoteCount(list: Suggestion[], email: string): number {
+  return list.reduce((n, s) => n + (s.interested.includes(email) ? 1 : 0), 0);
+}
+
+/** Toggle the requester's upvote on a suggestion (max MAX_UPVOTES active). */
 export function toggleInterest(list: Suggestion[], id: string, email: string): Suggestion[] {
+  const target = list.find((s) => s.id === id);
+  const adding = target ? !target.interested.includes(email) : false;
+  if (adding && upvoteCount(list, email) >= MAX_UPVOTES) {
+    throw new Error(`You can upvote at most ${MAX_UPVOTES} books — remove one first`);
+  }
   return list.map((s) => {
     if (s.id !== id) return s;
     const has = s.interested.includes(email);

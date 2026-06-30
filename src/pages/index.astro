@@ -3,7 +3,7 @@ import Layout from "@/components/Layout.astro";
 import { getSession, isAdmin } from "@/lib/session";
 import { listMonths, currentMonthId, userVote, tally, winnerBook, pickActive, displayLabel, scheduleText, monthName, isUpcoming } from "@/lib/months";
 import { getMembers } from "@/lib/membership";
-import { listProfiles, readerCards } from "@/lib/profiles";
+import { listProfiles, readerCards, isMember } from "@/lib/profiles";
 
 const session = getSession(Astro.cookies);
 const email = session?.email ?? null;
@@ -20,6 +20,7 @@ const winner = month ? winnerBook(month) : null;
 const members = month && month.phase === "closed" ? await getMembers(monthId) : [];
 const readers = members.length ? await readerCards(members) : [];
 const joined = email ? members.includes(email) : false;
+const member = email ? await isMember(email) : false;
 
 const today = new Date().toISOString().slice(0, 10);
 
@@ -94,9 +95,13 @@ function initials(name: string): string {
                 <h2 class="hero__title">{winner.title}</h2>
                 <div class="hero__author">{winner.author}</div>
                 <div class="hero__actions">
-                  <button class="btn js-join" id="join-btn" data-joined={joined ? "1" : "0"}>
-                    {joined ? "Leave this read" : "Join this read"}
-                  </button>
+                  {member ? (
+                    <button class="btn js-join" id="join-btn" data-joined={joined ? "1" : "0"}>
+                      {joined ? "Leave this read" : "Join this read"}
+                    </button>
+                  ) : (
+                    <a class="btn btn--ghost" href="/profile">Set up your profile to join →</a>
+                  )}
                   <a class="btn btn--muted" href={`/month/${monthId}`}>Open the discussion →</a>
                 </div>
                 <div class="readers" id="readers" style="margin-top:0.9rem">

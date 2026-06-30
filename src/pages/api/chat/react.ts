@@ -2,6 +2,7 @@ import type { APIRoute } from "astro";
 import { getSession, isAdmin, unauthorized, json } from "@/lib/session";
 import { getMonth, hasChosenBook } from "@/lib/months";
 import { listMessages, saveMessages, toggleReaction, ALLOWED_REACTIONS } from "@/lib/chat";
+import { isMember } from "@/lib/profiles";
 
 export const POST: APIRoute = async ({ request, cookies }) => {
   const session = getSession(cookies);
@@ -12,6 +13,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     emoji?: string;
   };
   if (!month || !id || !emoji) return json({ error: "Missing month, id or emoji" }, 400);
+  if (!(await isMember(session.email))) return json({ error: "Set up your profile to react" }, 403);
 
   const m = await getMonth(month);
   if (!m || !hasChosenBook(m)) return json({ error: "No book of the month yet" }, 400);

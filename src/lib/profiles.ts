@@ -113,6 +113,11 @@ export async function getProfile(email: string): Promise<Profile | null> {
   return readJSON<Profile | null>(STORE, profileKey(email), null);
 }
 
+/** A "member" of the club is someone who has set up their profile. */
+export async function isMember(email: string): Promise<boolean> {
+  return (await getProfile(email)) !== null;
+}
+
 export async function saveProfile(profile: Profile): Promise<void> {
   await writeJSON(STORE, profileKey(profile.email), profile);
 }

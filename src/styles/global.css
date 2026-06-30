@@ -111,9 +111,10 @@ main { padding: 2rem 0 4rem; }
 .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
 .grid { display: grid; gap: 1.1rem; }
 .grid--cards { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
-.grid--members { grid-template-columns: repeat(3, 1fr); gap: 1.25rem; }
-@media (max-width: 820px) { .grid--members { grid-template-columns: repeat(2, 1fr); } }
-@media (max-width: 540px) { .grid--members { grid-template-columns: 1fr; } }
+.grid--sugg { grid-template-columns: repeat(2, 1fr); }
+@media (max-width: 620px) { .grid--sugg { grid-template-columns: 1fr; } }
+.grid--members { grid-template-columns: repeat(2, 1fr); gap: 1.25rem; }
+@media (max-width: 620px) { .grid--members { grid-template-columns: 1fr; } }
 
 /* ---- Book card ---- */
 .book { display: flex; gap: 0.9rem; padding: 0.9rem; }

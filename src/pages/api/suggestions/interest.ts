@@ -7,7 +7,11 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   if (!session) return unauthorized();
   const { id } = (await request.json().catch(() => ({}))) as { id?: string };
   if (!id) return json({ error: "Missing id" }, 400);
-  const updated = toggleInterest(await listSuggestions(), id, session.email);
-  await saveSuggestions(updated);
-  return json({ suggestions: updated, me: session.email, isAdmin: isAdmin(session.email) });
+  try {
+    const updated = toggleInterest(await listSuggestions(), id, session.email);
+    await saveSuggestions(updated);
+    return json({ suggestions: updated, me: session.email, isAdmin: isAdmin(session.email) });
+  } catch (err) {
+    return json({ error: err instanceof Error ? err.message : "error" }, 400);
+  }
 };

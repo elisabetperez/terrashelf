@@ -1,6 +1,7 @@
 import type { APIRoute } from "astro";
 import { getSession, isAdmin, unauthorized, json } from "@/lib/session";
 import { getMonth, hasChosenBook } from "@/lib/months";
+import { isMember } from "@/lib/profiles";
 import {
   listMessages,
   saveMessages,
@@ -32,6 +33,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     topic?: string | null;
   };
   if (!month || !text) return json({ error: "Missing month or text" }, 400);
+  if (!(await isMember(session.email))) return json({ error: "Set up your profile to join the discussion" }, 403);
 
   const m = await getMonth(month);
   if (!m || !hasChosenBook(m)) return json({ error: "Chat opens once there is a book of the month" }, 400);

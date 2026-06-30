@@ -20,7 +20,10 @@ const admin = isAdmin(session?.email);
     <div class="results" id="results"></div>
   </div>
 
-  <div class="stack" id="suggestions"></div>
+  <h2 class="page-title" style="font-size:1.4rem;margin-top:2rem">What others have suggested</h2>
+  <p class="page-sub">A voting round will open soon — upvote your favourites (max 2).</p>
+  <p class="error" id="sugg-error" hidden></p>
+  <div class="grid grid--sugg" id="suggestions"></div>
 </Layout>
 
 <script>
@@ -109,7 +112,7 @@ const admin = isAdmin(session?.email);
   function render(suggestions: Suggestion[]) {
     listEl.innerHTML = "";
     if (!suggestions.length) {
-      listEl.innerHTML = `<div class="empty card"><h2>No suggestions yet</h2><p>Be the first to add a book above.</p></div>`;
+      listEl.innerHTML = `<div class="empty card" style="grid-column:1/-1"><h2>No suggestions yet</h2><p>Be the first to add a book above.</p></div>`;
       return;
     }
     const ordered = [...suggestions].sort(
@@ -151,7 +154,16 @@ const admin = isAdmin(session?.email);
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id }),
     });
-    if (r.ok) applyData(await r.json());
+    const data = await r.json().catch(() => ({}));
+    const err = document.getElementById("sugg-error") as HTMLElement;
+    if (r.ok) {
+      err.hidden = true;
+      applyData(data);
+    } else {
+      err.textContent = data.error ?? "Could not upvote";
+      err.hidden = false;
+      setTimeout(() => { err.hidden = true; }, 3000);
+    }
   }
 
   async function removeSuggestion(id: string) {
