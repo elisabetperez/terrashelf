@@ -64,6 +64,8 @@ h1, h2, h3 { font-family: var(--font); font-weight: 600; line-height: 1.15; marg
 .brand { font-family: var(--font); font-size: 1.4rem; font-weight: 700; color: var(--ink); display: flex; align-items: center; gap: 0.5rem; }
 .brand:hover { text-decoration: none; }
 .brand__mark { color: var(--accent); }
+.brand__text { display: flex; flex-direction: column; line-height: 1.05; }
+.brand__by { font-family: var(--sans); font-weight: 700; font-size: 0.58rem; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); margin-top: 2px; }
 .nav { display: flex; gap: 1.1rem; margin-left: auto; align-items: center; flex-wrap: wrap; }
 .nav a { color: var(--muted); font-weight: 600; font-size: 0.95rem; }
 .nav a:hover, .nav a[aria-current="page"] { color: var(--accent-dark); text-decoration: none; }
@@ -261,7 +263,8 @@ input[type="month"], input[type="date"], select { font: inherit; padding: 0.5rem
 .gate { min-height: 80vh; display: flex; align-items: center; justify-content: center; padding: 2rem; }
 .gate__card { max-width: 420px; width: 100%; text-align: center; padding: 2.5rem 2rem; border-top: 6px solid var(--accent); }
 .gate__mark { font-size: 2.5rem; }
-.gate__title { font-size: 1.8rem; margin: 0.5rem 0; }
+.gate__title { font-size: 1.8rem; margin: 0.5rem 0 0; }
+.gate__by { font-weight: 700; font-size: 0.62rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); margin: 0.2rem 0 0.9rem; }
 .gate__sub { color: var(--muted); margin-bottom: 1.5rem; }
 .gate .btn { width: 100%; }
 .gate__or { color: var(--muted); font-size: 0.8rem; margin: 1.25rem 0 0.75rem; }
