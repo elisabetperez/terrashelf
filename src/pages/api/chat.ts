@@ -1,6 +1,6 @@
 import type { APIRoute } from "astro";
 import { getSession, isAdmin, unauthorized, json } from "@/lib/session";
-import { getMonth } from "@/lib/months";
+import { getMonth, hasChosenBook } from "@/lib/months";
 import {
   listMessages,
   saveMessages,
@@ -34,7 +34,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   if (!month || !text) return json({ error: "Missing month or text" }, 400);
 
   const m = await getMonth(month);
-  if (!m || m.phase !== "closed") return json({ error: "Chat opens once there is a book of the month" }, 400);
+  if (!m || !hasChosenBook(m)) return json({ error: "Chat opens once there is a book of the month" }, 400);
   try {
     const updated = addMessage(
       await listMessages(month),

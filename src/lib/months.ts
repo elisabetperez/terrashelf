@@ -230,6 +230,11 @@ export function winnerBook(month: Month): BookRef | null {
   return month.candidates.find((c) => c.id === month.winnerBookId) ?? null;
 }
 
+/** True once a book is chosen — the reading (closed) or finished (archived). Join + chat are open. */
+export function hasChosenBook(month: Pick<Month, "phase" | "winnerBookId">): boolean {
+  return (month.phase === "closed" || month.phase === "archived") && !!month.winnerBookId;
+}
+
 // ---- Persistence ----
 
 /** Backfill fields for records written before they existed. */

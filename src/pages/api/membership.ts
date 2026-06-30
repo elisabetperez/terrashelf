@@ -1,6 +1,6 @@
 import type { APIRoute } from "astro";
 import { getSession, unauthorized, json } from "@/lib/session";
-import { getMonth } from "@/lib/months";
+import { getMonth, hasChosenBook } from "@/lib/months";
 import { getMembers, saveMembers, toggleMember } from "@/lib/membership";
 import { readerCards } from "@/lib/profiles";
 
@@ -20,7 +20,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   if (!month) return json({ error: "Missing month" }, 400);
 
   const m = await getMonth(month);
-  if (!m || m.phase !== "closed") return json({ error: "No book of the month yet" }, 400);
+  if (!m || !hasChosenBook(m)) return json({ error: "No book of the month yet" }, 400);
 
   const updated = toggleMember(await getMembers(month), session.email);
   await saveMembers(month, updated);

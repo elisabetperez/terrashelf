@@ -18,6 +18,7 @@ import {
   isValidPeriodId,
   archiveMonth,
   isUpcoming,
+  hasChosenBook,
   type Month,
 } from "@/lib/months";
 import type { BookRef } from "@/lib/books";
@@ -156,6 +157,14 @@ describe("archiveMonth", () => {
   });
   it("refuses to archive before a book is chosen", () => {
     expect(() => archiveMonth(votingMonth(), NOW)).toThrow(/chosen book/);
+  });
+
+  it("keeps the discussion open (hasChosenBook) for closed and archived", () => {
+    let m = closeMonth(castVote(votingMonth(), "A", "u1@terrahq.com"), NOW);
+    expect(hasChosenBook(m)).toBe(true);
+    m = archiveMonth(m, NOW);
+    expect(hasChosenBook(m)).toBe(true);
+    expect(hasChosenBook(votingMonth())).toBe(false);
   });
 });
 

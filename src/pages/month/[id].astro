@@ -1,7 +1,7 @@
 ---
 import Layout from "@/components/Layout.astro";
 import { getSession, isAdmin } from "@/lib/session";
-import { getMonth, winnerBook, isValidPeriodId, displayLabel, scheduleText, monthName } from "@/lib/months";
+import { getMonth, winnerBook, hasChosenBook, isValidPeriodId, displayLabel, scheduleText, monthName } from "@/lib/months";
 import { getMembers } from "@/lib/membership";
 import { listProfiles, readerCards, nameFromEmail } from "@/lib/profiles";
 
@@ -11,7 +11,8 @@ const id = Astro.params.id ?? "";
 
 const month = session && isValidPeriodId(id) ? await getMonth(id) : null;
 const winner = month ? winnerBook(month) : null;
-const isClosed = month?.phase === "closed" && winner;
+const isClosed = month ? hasChosenBook(month) : false;
+const finished = month?.phase === "archived";
 const members = isClosed ? await getMembers(id) : [];
 const readers = members.length ? await readerCards(members) : [];
 const joined = session ? members.includes(session.email) : false;
@@ -45,7 +46,7 @@ function initials(name: string): string {
       <div class="hero card">
         {winner!.coverUrl ? <img class="hero__cover" src={winner!.coverUrl} alt="" /> : <div class="hero__cover"></div>}
         <div class="hero__body">
-          <div class="hero__kicker">Book of the month</div>
+          <div class="hero__kicker">{finished ? "Past book of the month" : "Book of the month"}</div>
           <h1 class="hero__title">{winner!.title}</h1>
           <div class="hero__author">{winner!.author}</div>
           <div class="hero__actions">
