@@ -97,6 +97,7 @@ function initials(name: string): string {
     const month = (chat as HTMLElement).dataset.month!;
     const mentionables: Mentionable[] = JSON.parse((chat as HTMLElement).dataset.mentionables || "[]");
     const handleSet = new Set(mentionables.map((m) => m.handle));
+    const nameByHandle = new Map(mentionables.map((m) => [m.handle, m.name]));
     const threadsEl = document.getElementById("threads")!;
     const newThreadForm = document.getElementById("new-thread") as HTMLFormElement;
     let me = "";
@@ -116,6 +117,7 @@ function initials(name: string): string {
     const topicListEl = document.getElementById("topic-list") as HTMLDataListElement;
 
     const nameOnly = (e: string) => (e.includes("@") ? e.slice(0, e.indexOf("@")) : e);
+    const reactorName = (email: string) => nameByHandle.get(email.split("@")[0].toLowerCase()) ?? nameOnly(email);
     const fmt = (iso: string) => {
       const d = new Date(iso);
       return Number.isNaN(d.getTime()) ? "" : d.toLocaleString("en-US", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "short" });
@@ -222,7 +224,9 @@ function initials(name: string): string {
         if (!users.length) continue;
         const chip = document.createElement("button");
         chip.className = "rx" + (users.includes(me) ? " is-mine" : "");
-        chip.title = users.map(nameOnly).join(", ");
+        const names = users.map(reactorName).join(", ");
+        chip.title = names;
+        chip.dataset.tip = names;
         chip.textContent = `${emoji} ${users.length}`;
         chip.addEventListener("click", () => react(m.id, emoji));
         bar.append(chip);

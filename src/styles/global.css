@@ -197,7 +197,15 @@ main { padding: 2rem 0 4rem; }
 
 /* ---- Reactions ---- */
 .reactions { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.5rem; align-items: center; }
-.rx { font: inherit; font-size: 0.8rem; cursor: pointer; padding: 0.1rem 0.5rem; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); line-height: 1.6; }
+.rx { position: relative; font: inherit; font-size: 0.8rem; cursor: pointer; padding: 0.1rem 0.5rem; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); line-height: 1.6; }
+.rx[data-tip]:hover::after {
+  content: attr(data-tip);
+  position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%);
+  background: var(--ink); color: #fff; font-size: 0.72rem; font-weight: 600;
+  padding: 0.3rem 0.55rem; border-radius: 6px; white-space: nowrap;
+  max-width: 240px; overflow: hidden; text-overflow: ellipsis;
+  z-index: 30; pointer-events: none; box-shadow: var(--shadow);
+}
 .rx:hover { border-color: var(--accent); }
 .rx.is-mine { background: rgba(236, 90, 168, 0.12); border-color: var(--accent); color: var(--pink-dark); font-weight: 700; }
 .rx-add { color: var(--muted); font-weight: 700; }
