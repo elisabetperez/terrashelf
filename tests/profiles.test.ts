@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { applyProfileInput, emptyProfile, nameFromEmail, accentForEmail, ACCENT_VARS, MAX_TOP_BOOKS, MAX_BIO_CHARS } from "@/lib/profiles";
+import { applyProfileInput, emptyProfile, nameFromEmail, accentForEmail, profileKey, ACCENT_VARS, MAX_TOP_BOOKS, MAX_BIO_CHARS } from "@/lib/profiles";
 import type { BookRef } from "@/lib/books";
 
 const NOW = "2026-06-30T00:00:00Z";
@@ -59,6 +59,18 @@ describe("applyProfileInput", () => {
   it("allows clearing the photo", () => {
     const p = applyProfileInput({ ...base, avatarUrl: "https://example.com/x.png" }, { avatarUrl: "" }, NOW);
     expect(p.avatarUrl).toBe("");
+  });
+});
+
+describe("profileKey isolation", () => {
+  it("gives distinct keys to distinct emails so users never overwrite each other", () => {
+    const emails = ["eli@terrahq.com", "ana@terrahq.com", "luis@terrahq.com", "Eli.Perez@terrahq.com"];
+    const keys = emails.map(profileKey);
+    expect(new Set(keys).size).toBe(emails.length);
+  });
+
+  it("is stable for the same email regardless of casing", () => {
+    expect(profileKey("Eli@Terrahq.com")).toBe(profileKey("eli@terrahq.com"));
   });
 });
 
