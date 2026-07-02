@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { signSession, verifySession, isAdminEmail, isAllowedEmail } from "@/lib/auth";
+import { signSession, verifySession, isAdminEmail, isAllowedEmail, adminRole } from "@/lib/auth";
 
 const SECRET = "test-secret-please-ignore-0123456789";
 
@@ -31,6 +31,16 @@ describe("isAdminEmail", () => {
     expect(isAdminEmail("Eli@terrahq.com", "eli@terrahq.com, x@terrahq.com")).toBe(true);
     expect(isAdminEmail("nope@terrahq.com", "eli@terrahq.com")).toBe(false);
     expect(isAdminEmail("eli@terrahq.com", undefined)).toBe(false);
+  });
+});
+
+describe("adminRole", () => {
+  const list = "eli@terrahq.com, dalila.cabrera@terrahq.com";
+  it("primary is admin, the rest co-admin, others null", () => {
+    expect(adminRole("eli@terrahq.com", list)).toBe("admin");
+    expect(adminRole("Dalila.Cabrera@terrahq.com", list)).toBe("co-admin");
+    expect(adminRole("someone@terrahq.com", list)).toBeNull();
+    expect(adminRole(null, list)).toBeNull();
   });
 });
 

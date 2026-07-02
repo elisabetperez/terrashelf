@@ -5,15 +5,29 @@ export type SessionPayload = {
   email: string; // identity (Google email)
 };
 
-/** True if `email` is in the comma-separated ADMIN_EMAILS list. */
-export function isAdminEmail(email: string | null | undefined, list: string | undefined): boolean {
-  if (!email || !list) return false;
-  const allowed = list
+function adminList(list: string | undefined): string[] {
+  return (list ?? "")
     .toLowerCase()
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
-  return allowed.includes(email.toLowerCase());
+}
+
+/** True if `email` is in the comma-separated ADMIN_EMAILS list. */
+export function isAdminEmail(email: string | null | undefined, list: string | undefined): boolean {
+  if (!email) return false;
+  return adminList(list).includes(email.toLowerCase());
+}
+
+export type AdminRole = "admin" | "co-admin" | null;
+
+/** Role for `email`: the first entry in ADMIN_EMAILS is the primary "admin", the rest are "co-admin". */
+export function adminRole(email: string | null | undefined, list: string | undefined): AdminRole {
+  if (!email) return null;
+  const arr = adminList(list);
+  const e = email.toLowerCase();
+  if (!arr.includes(e)) return null;
+  return e === arr[0] ? "admin" : "co-admin";
 }
 
 /**

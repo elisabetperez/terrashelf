@@ -1,11 +1,14 @@
 ---
 import Layout from "@/components/Layout.astro";
-import { getSession, isAdmin } from "@/lib/session";
+import { getSession, isAdmin, adminRole } from "@/lib/session";
 import { listProfiles, accentForEmail } from "@/lib/profiles";
 
 const session = getSession(Astro.cookies);
 const admin = isAdmin(session?.email);
-const profiles = session ? await listProfiles() : [];
+const allProfiles = session ? await listProfiles() : [];
+// Admins first (primary, then co-admins), then everyone else alphabetically.
+const rank = (email: string) => (adminRole(email) === "admin" ? 0 : adminRole(email) === "co-admin" ? 1 : 2);
+const profiles = [...allProfiles].sort((a, b) => rank(a.email) - rank(b.email) || a.displayName.localeCompare(b.displayName));
 
 function initials(name: string): string {
   return name
@@ -29,8 +32,8 @@ function initials(name: string): string {
   ) : (
     <div class="grid grid--members">
       {profiles.map((p) => {
-        const isAdminMember = isAdmin(p.email);
-        const accent = isAdminMember ? "var(--pink)" : accentForEmail(p.email);
+        const role = adminRole(p.email);
+        const accent = role ? "var(--pink)" : accentForEmail(p.email);
         return (
           <div class="card member" style={`border-top-color:${accent}`}>
             <div class="member__head">
@@ -42,7 +45,7 @@ function initials(name: string): string {
               <div>
                 <div class="member__name">
                   {p.displayName}
-                  {isAdminMember && <span class="badge badge--admin">Admin</span>}
+                  {role && <span class="badge badge--admin">{role === "admin" ? "Admin" : "Co-admin"}</span>}
                 </div>
                 <div class="member__email">{p.email}</div>
               </div>

@@ -1,5 +1,5 @@
 import type { AstroCookies } from "astro";
-import { verifySession, isAdminEmail, type SessionPayload } from "@/lib/auth";
+import { verifySession, isAdminEmail, adminRole as authAdminRole, type SessionPayload, type AdminRole } from "@/lib/auth";
 
 export const SESSION_COOKIE = "terrashelf_session";
 export const SESSION_TTL_MS = 60 * 24 * 60 * 60 * 1000; // 60 days
@@ -15,6 +15,11 @@ export function getSession(cookies: AstroCookies): SessionPayload | null {
 
 export function isAdmin(email: string | null | undefined): boolean {
   return isAdminEmail(email, import.meta.env.ADMIN_EMAILS);
+}
+
+/** "admin" (primary) | "co-admin" | null — same permissions, different label. */
+export function adminRole(email: string | null | undefined): AdminRole {
+  return authAdminRole(email, import.meta.env.ADMIN_EMAILS);
 }
 
 /** 401 JSON helper. */
