@@ -1,13 +1,14 @@
 import type { APIRoute } from "astro";
 import { getSession, isAdmin, unauthorized, json } from "@/lib/session";
 import { bookIdFromOlKey, type BookRef } from "@/lib/books";
-import { listSuggestions, saveSuggestions, addSuggestion, removeSuggestion } from "@/lib/suggestions";
+import { listSuggestions, saveSuggestions, addSuggestion, removeSuggestion, visibleSuggestions } from "@/lib/suggestions";
 
 export const GET: APIRoute = async ({ cookies }) => {
   const session = getSession(cookies);
   if (!session) return unauthorized();
-  const suggestions = await listSuggestions();
-  return json({ suggestions, me: session.email, isAdmin: isAdmin(session.email) });
+  const admin = isAdmin(session.email);
+  const suggestions = visibleSuggestions(await listSuggestions(), session.email, admin);
+  return json({ suggestions, me: session.email, isAdmin: admin });
 };
 
 export const POST: APIRoute = async ({ request, cookies }) => {
@@ -23,9 +24,10 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     coverUrl: body.coverUrl ?? "",
   };
   try {
+    const admin = isAdmin(session.email);
     const updated = addSuggestion(await listSuggestions(), ref, session.email, new Date().toISOString(), body.note ?? "");
     await saveSuggestions(updated);
-    return json({ suggestions: updated, me: session.email, isAdmin: isAdmin(session.email) });
+    return json({ suggestions: visibleSuggestions(updated, session.email, admin), me: session.email, isAdmin: admin });
   } catch (err) {
     return json({ error: err instanceof Error ? err.message : "error" }, 400);
   }
@@ -37,9 +39,10 @@ export const DELETE: APIRoute = async ({ url, cookies }) => {
   const id = url.searchParams.get("id");
   if (!id) return json({ error: "Missing id" }, 400);
   try {
-    const updated = removeSuggestion(await listSuggestions(), id, session.email, isAdmin(session.email));
+    const admin = isAdmin(session.email);
+    const updated = removeSuggestion(await listSuggestions(), id, session.email, admin);
     await saveSuggestions(updated);
-    return json({ suggestions: updated, me: session.email, isAdmin: isAdmin(session.email) });
+    return json({ suggestions: visibleSuggestions(updated, session.email, admin), me: session.email, isAdmin: admin });
   } catch (err) {
     return json({ error: err instanceof Error ? err.message : "error" }, 403);
   }

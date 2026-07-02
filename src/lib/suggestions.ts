@@ -41,6 +41,15 @@ export function removeSuggestion(list: Suggestion[], id: string, requester: stri
   return list.filter((s) => s.id !== id);
 }
 
+/**
+ * What a requester may see: the admin sees everything; everyone else sees only
+ * their own suggestions, with upvote details stripped (upvotes are admin-only).
+ */
+export function visibleSuggestions(list: Suggestion[], email: string, isAdmin: boolean): Suggestion[] {
+  if (isAdmin) return list;
+  return list.filter((s) => s.suggestedBy === email).map((s) => ({ ...s, interested: [] }));
+}
+
 /** Count how many suggestions this email has upvoted. */
 export function upvoteCount(list: Suggestion[], email: string): number {
   return list.reduce((n, s) => n + (s.interested.includes(email) ? 1 : 0), 0);

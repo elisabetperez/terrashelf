@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { addSuggestion, removeSuggestion, toggleInterest, upvoteCount, MAX_UPVOTES, type Suggestion } from "@/lib/suggestions";
+import { addSuggestion, removeSuggestion, toggleInterest, upvoteCount, visibleSuggestions, MAX_UPVOTES, type Suggestion } from "@/lib/suggestions";
 import type { BookRef } from "@/lib/books";
 
 const ref: BookRef = { id: "OL1W", olKey: "/works/OL1W", title: "Dune", author: "Herbert", coverUrl: "" };
@@ -45,6 +45,19 @@ describe("removeSuggestion", () => {
 
 const ref2: BookRef = { id: "OL2W", olKey: "/works/OL2W", title: "PHM", author: "Weir", coverUrl: "" };
 const ref3: BookRef = { id: "OL3W", olKey: "/works/OL3W", title: "Sapiens", author: "Harari", coverUrl: "" };
+
+describe("visibleSuggestions (privacy)", () => {
+  it("admin sees all with upvotes; a member sees only their own with upvotes stripped", () => {
+    let list = addSuggestion([], ref, "a@terrahq.com", "n");
+    list = addSuggestion(list, ref2, "b@terrahq.com", "n");
+    list = toggleInterest(list, "OL2W", "c@terrahq.com"); // an upvote on b's
+    expect(visibleSuggestions(list, "a@terrahq.com", true)).toHaveLength(2);
+    const mine = visibleSuggestions(list, "b@terrahq.com", false);
+    expect(mine).toHaveLength(1);
+    expect(mine[0].suggestedBy).toBe("b@terrahq.com");
+    expect(mine[0].interested).toEqual([]);
+  });
+});
 
 describe("toggleInterest (upvote)", () => {
   it("adds then removes interest", () => {

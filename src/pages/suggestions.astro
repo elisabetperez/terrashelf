@@ -8,7 +8,7 @@ const admin = isAdmin(session?.email);
 
 <Layout title="TerraShelf — Suggestions" session={session} isAdmin={admin} active="suggestions">
   <h1 class="page-title">Suggestion box</h1>
-  <p class="page-sub">A shared pool of ideas for future reads — not tied to any one period. <strong>Upvote</strong> the ones you want to read; the most-voted rise to the top and help the admin pick candidates.</p>
+  <p class="page-sub">Add books you'd love the club to read. Your suggestions are <strong>private</strong> — only the admin sees everyone's.</p>
 
   <div class="card" style="padding:1rem;margin-bottom:1.5rem">
     <label for="q">Search a book to add</label>
@@ -20,8 +20,8 @@ const admin = isAdmin(session?.email);
     <div class="results" id="results"></div>
   </div>
 
-  <h2 class="page-title" style="font-size:1.4rem;margin-top:2rem">What others have suggested</h2>
-  <p class="page-sub">A voting round will open soon — upvote your favourites (max 2).</p>
+  <h2 class="page-title" style="font-size:1.4rem;margin-top:2rem" id="sugg-heading">Your suggestions</h2>
+  <p class="page-sub" id="sugg-sub">Only you and the admin can see these. A voting round will open soon.</p>
   <p class="error" id="sugg-error" hidden></p>
   <div class="grid grid--sugg" id="suggestions"></div>
 </Layout>
@@ -106,13 +106,19 @@ const admin = isAdmin(session?.email);
 
   function applyData(data: { suggestions: Suggestion[]; me: string; isAdmin: boolean }) {
     me = data.me; isAdmin = data.isAdmin;
+    const h = document.getElementById("sugg-heading");
+    const sub = document.getElementById("sugg-sub");
+    if (h) h.textContent = isAdmin ? "Everyone's suggestions" : "Your suggestions";
+    if (sub) sub.textContent = isAdmin
+      ? "All members' suggestions, with upvotes — pick candidates from here when you open a period."
+      : "Only you and the admin can see these. A voting round will open soon.";
     render(data.suggestions);
   }
 
   function render(suggestions: Suggestion[]) {
     listEl.innerHTML = "";
     if (!suggestions.length) {
-      listEl.innerHTML = `<div class="empty card" style="grid-column:1/-1"><h2>No suggestions yet</h2><p>Be the first to add a book above.</p></div>`;
+      listEl.innerHTML = `<div class="empty card" style="grid-column:1/-1"><h2>${isAdmin ? "No suggestions yet" : "You haven't suggested anything yet"}</h2><p>Add a book above.</p></div>`;
       return;
     }
     const ordered = [...suggestions].sort(
@@ -127,22 +133,23 @@ const admin = isAdmin(session?.email);
         <div style="flex:1">
           <div class="book__title"></div>
           <div class="book__author"></div>
-          <div class="book__meta">suggested by <span class="js-by"></span></div>
+          ${isAdmin ? `<div class="book__meta">suggested by <span class="js-by"></span></div>` : ""}
           <p class="book__note js-note" hidden></p>
           <div class="row" style="margin-top:0.6rem">
-            <button class="pill js-interest ${mine ? "is-on" : ""}">▲ Upvote · <span class="js-icount">${s.interested.length}</span></button>
+            ${isAdmin ? `<button class="pill js-interest ${mine ? "is-on" : ""}">▲ Upvote · <span class="js-icount">${s.interested.length}</span></button>` : ""}
             ${(s.suggestedBy === me || isAdmin) ? `<button class="btn btn--ghost btn--sm js-del">Remove</button>` : ""}
           </div>
         </div>`;
       card.querySelector(".book__title")!.textContent = s.title;
       card.querySelector(".book__author")!.textContent = s.author;
-      card.querySelector(".js-by")!.textContent = nameOnly(s.suggestedBy);
+      const by = card.querySelector(".js-by");
+      if (by) by.textContent = nameOnly(s.suggestedBy);
       if (s.note) {
         const noteEl = card.querySelector(".js-note") as HTMLElement;
         noteEl.textContent = `📝 ${s.note}`;
         noteEl.hidden = false;
       }
-      card.querySelector(".js-interest")!.addEventListener("click", () => toggleInterest(s.id));
+      card.querySelector(".js-interest")?.addEventListener("click", () => toggleInterest(s.id));
       card.querySelector(".js-del")?.addEventListener("click", () => removeSuggestion(s.id));
       listEl.append(card);
     }
