@@ -33,7 +33,7 @@ function initials(name: string): string {
     <div class="grid grid--members">
       {profiles.map((p) => {
         const role = adminRole(p.email);
-        const accent = role ? "var(--pink)" : accentForEmail(p.email);
+        const accent = role === "admin" ? "var(--pink)" : role === "co-admin" ? "var(--blue)" : accentForEmail(p.email);
         return (
           <div class="card member" style={`border-top-color:${accent}`}>
             <div class="member__head">
@@ -45,7 +45,7 @@ function initials(name: string): string {
               <div>
                 <div class="member__name">
                   {p.displayName}
-                  {role && <span class="badge badge--admin">{role === "admin" ? "Admin" : "Co-admin"}</span>}
+                  {role && <span class={`badge ${role === "admin" ? "badge--admin" : "badge--coadmin"}`}>{role === "admin" ? "Admin" : "Co-admin"}</span>}
                 </div>
                 <div class="member__email">{p.email}</div>
               </div>

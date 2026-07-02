@@ -259,6 +259,7 @@ label { font-weight: 600; font-size: 0.9rem; display: block; margin-bottom: 0.3r
 .badge--closed { background: rgba(23, 145, 95, 0.16); color: var(--green); }
 .badge--draft { background: var(--surface-2); color: var(--muted); }
 .badge--admin { background: rgba(236, 90, 168, 0.15); color: var(--pink-dark); margin-left: 0.4rem; vertical-align: middle; }
+.badge--coadmin { background: rgba(47, 159, 214, 0.16); color: #1f6f99; margin-left: 0.4rem; vertical-align: middle; }
 .badge--archived { background: var(--surface-2); color: var(--muted); }
 .badge--upcoming { background: rgba(47, 159, 214, 0.16); color: #1f6f99; }
 
